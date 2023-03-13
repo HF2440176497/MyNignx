@@ -44,18 +44,15 @@ void init_setproctitle() {
         g_p_arglen[i] = len;
         g_arglen += (len + 1);
     }
-    std::cout << "g_arglen: "<< g_arglen << std::endl;
-
-    // g_arglen == 8 ./nginx 
 
     g_p_argmem = new char[g_arglen];
     memset(g_p_argmem, '\0', g_arglen);
     char* p_argtmp = g_p_argmem;
-    g_argv = (char**)g_p_argmem;  // 一定要初始化，否则访问了NULL，造成段错误
+    g_argv = (char**)g_p_argmem;  // 一定要初始化，否则直接访问 g_argv，造成段错误
 
     // 重定向时发生错误，g_argv[i] 此时 g_init_argv 指向地址相同，应当 g_argv 初始化指向 g_p_argmem 处
     for (int i = 0; g_init_argv[i]; i++) {
-        strncpy(p_argtmp, g_init_argv[i], strlen(g_init_argv[i]));  // g_argv[i] 保存原有参数的地址
+        strncpy(p_argtmp, g_init_argv[i], strlen(g_init_argv[i]));  // g_init_argv[i] 保存原有参数的地址
         g_argv[i] = p_argtmp;
         p_argtmp += (strlen(g_argv[i]) + 1);
     }
