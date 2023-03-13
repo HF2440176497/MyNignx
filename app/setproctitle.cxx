@@ -76,7 +76,7 @@ void setproctitle(const char* title) {
     return;
 }
 
-// 释放内存
+// 释放内存 Not`Fast forward`模式
 void freeresource() {
     delete []g_p_envmem;
     delete []g_p_arglen;
