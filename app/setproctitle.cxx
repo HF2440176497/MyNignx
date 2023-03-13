@@ -6,17 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-
-extern int g_argc;
-extern char** g_argv;
-extern char** g_init_argv;
-
-extern char* g_p_envmem;  // 指向手动开辟内存，保存的环境变量的首地址
-extern int g_environlen;  // 为环境变量开辟的内存空间大小
-
-extern char* g_p_argmem;
-extern int g_arglen;     // 为命令行参数开辟的内存空间总大小
-extern int* g_p_arglen;  // 保存各参数的长度的数组，分配argc*int空间
+#include "global.h"
 
 /**
  * @brief

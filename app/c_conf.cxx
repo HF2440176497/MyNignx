@@ -3,7 +3,7 @@
 #include <iostream>
 #include <cstdio>
 #include <cstring>
-#include "c_conf.h"  // LPConfItem 定义在 global.h
+#include "c_conf.h"  // LPConfItem 在 global.h 声明
 #include "func.h"
 
 #define LINESIZE 200
