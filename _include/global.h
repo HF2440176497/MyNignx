@@ -13,7 +13,7 @@ typedef struct {
 
 // 日志相关结构体
 typedef struct {
-    int log_level;  // 日志级别
+    int level;  // 日志级别
     int fd;         // 日志文件描述符
 }log_t;
 
@@ -30,6 +30,7 @@ extern char* g_p_argmem;
 extern int g_arglen;     // 为命令行参数开辟的内存空间总大小
 extern int* g_p_arglen;  // 保存各参数的长度的数组，分配argc*int空间
 
-
+extern pid_t cur_pid;
+extern log_t log_s;  // 在 func_log.cxx 中定义的全局变量
 
 #endif
