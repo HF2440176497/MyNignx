@@ -1,8 +1,8 @@
 
 // 单例类：读取配置项
 // 不需要全局变量，只需要类的
-#ifndef CConfig_H
-#define CConfig_H
+#ifndef CCONFIG_H
+#define CCONFIG_H
 
 #include "global.h"  
 #include <vector>
@@ -18,7 +18,7 @@ private:
     ~CConfig();
 
 public:
-    static CConfig* getInstance() {
+    static CConfig* GetInstance() {
         if (m_instance == nullptr) {
             m_instance = new CConfig();
             static GarRecycle tmp;  // 同样是 static 成员
