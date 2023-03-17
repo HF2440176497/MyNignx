@@ -40,15 +40,12 @@ int main(int argc, char *const *argv) {
         log_error_core(0, 0, "Configuration file [%s] loading failed, Exit", conffile);  // errnum == 0 
         exitcode = 2;  // 标记找不到文件
         // goto normexit;
-    }
-        
-  
+    }   
     p_config->Test();
 
     init_setproctitle();
     setproctitle("MyNginx");
-
-    
+ 
     // 日志系统 测试
     int level = 0; int errnum = 7;
     const char* fmt = "测试输出 print a num ：%d";
