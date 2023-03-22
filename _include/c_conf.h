@@ -1,4 +1,4 @@
-
+﻿
 // 单例类：读取配置项
 // 不需要全局变量，只需要类的
 #ifndef CCONFIG_H
@@ -6,9 +6,6 @@
 
 #include "global.h"  
 #include <vector>
-
-using namespace std;
-
 
 class CConfig {
 private:
@@ -40,16 +37,13 @@ private:
 
 public:
     bool Load(const char* pfile);
-    bool LoadLine(const char* line);
     int GetInt(const char* itemname, const int def);
     const char* GetString(const char* itemname);
 
     void Test();
 
 public:
-    vector<LPConfItem> m_itemlist;
+    std::vector<LPConfItem> m_itemlist;
 };
 
 #endif
-
-// 需注意这里要包含头文件

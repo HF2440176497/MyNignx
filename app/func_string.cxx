@@ -1,15 +1,20 @@
+﻿//和打印格式相关的函数放这里
 
-// 和字符串相关的函数
-#include <cstdio>
-#include <cstring>
-#include <fcntl.h>
-#include <cstdlib>
-#include <cstdarg>
-#include <stack>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <stdint.h>   //类型相关头文件
 #include <queue>
-#include <sys/time.h>
+#include <stack>
+#include "global.h"
 #include "macro.h"
-#include "func.h"  // 参考代码中，ui_string frac_string 设置为 static 函数，属于内部链接
+#include "func.h"
+
+// static u_char* ngx_sprintf_num(u_char *buf, u_char *last, uint64_t ui64,u_char zero, uintptr_t hexadecimal, uintptr_t width);
+
+static u_char* ui64_string(u_char *buf, u_char *last, u_int64_t ui64, u_char zero, u_int64_t hexadecimal, u_int64_t width);
+static u_char* frac_string(u_char *buf, u_char *last, u_int64_t ui64, u_char zero, u_int64_t hexadecimal, u_int64_t width);
 
 
 char* Ltrim(char line[]) {
@@ -30,187 +35,177 @@ char* Rtrim(char string[]) {
     return NULL;
 }
 
-/**
- * @brief 构建 fmt 的格式字符串，将传入的参数按 % 指定的类型显示
- * 是对于 fmt_string 的一层简单的封装，便于传入可变参数 args
- * @details 对应参考代码中的 ngx_slprintf 函数
-*/
-u_char* fmt_string_print(u_char *buf, u_char *last, const char *fmt, ...) {
-    u_char* p;
-    va_list args;
-    va_start(args, fmt);
+u_char *fmt_string_print(u_char *buf, u_char *last, const char *fmt, ...) 
+{
+    va_list   args;
+    u_char   *p;
+
+    va_start(args, fmt); //使args指向起始的参数
     p = fmt_string(buf, last, fmt, args);
-    va_end(args);  // 释放 args 参数
+    va_end(args);        //释放args   
     return p;
 }
 
-
-/**
- * @brief 按照指定格式，组合得到字符串
- * @param buf 字符串存放地址
- * @param last 存放地址结束位置
- * @param fmt 用于指定格式的字符串
- * @return 返回字符串存放位置的首地址
-*/
-u_char* fmt_string(u_char *buf, u_char *last,const char *fmt,va_list arg) {
+u_char *fmt_string(u_char *buf, u_char *last, const char *fmt, va_list args) {
     u_char zero;
 
-    int64_t   i64;
-    u_int64_t ui64;
+    /*
+    #ifdef _WIN64
+        typedef unsigned __int64  uintptr_t;
+    #else
+        typedef unsigned int uintptr_t;
+    #endif
+    */
+    uintptr_t width, sign, hex, width_frac, scale;  // 临时用到的一些变量
 
-    u_int64_t width;
-    u_int64_t sign;
-    u_int64_t hex;
+    ssize_t size;   // %s 时记录字符串长度
+    u_char* lp_str; // %s 时代表字符串指针
 
-    u_char *lp_str;
+    int64_t  i64;   // 保存%d对应的可变参
+    uint64_t ui64;  // 保存%ud对应的可变参，临时作为%f可变参的整数部分也是可以的
+    
 
-    double frac;   // 分数
-    int    scale;  // 小数部分转换为整数的缩放尺度
-
-    u_int64_t width_frac;
-    u_int64_t ui64_frac;  // 小数部分的长度，分数的整数部分，分数的小数部分
+    double   frac;       // 保存%f对应的可变参
+    uint64_t ui64_frac;  //%f可变参数,根据%.2f等，取得小数部分的2位后的内容；
 
     while (*fmt && buf < last) {
-        
-        // 判断 *fmt: fmt 此处不自增，当 *fmt != %，需要此位置原样输出
         if (*fmt == '%') {
-
+            zero = (u_char)((*++fmt == '0') ? '0' : ' ');
             i64 = 0;
             ui64 = 0;
-            width = 0; 
+            width = 0;
             sign = 1;  // 默认为有符号数
             hex = 0;
             ui64_frac = 0;
-            width_frac = 0; 
+            width_frac = 0;
 
-            zero = (u_char)((*++fmt == '0' ? '0' : ' ')); 
+            while (*fmt >= '0' && *fmt <= '9')
+                width = width * 10 + (*fmt++ - '0');
 
-            while (*fmt <= '9' && *fmt >= '0') {
-                width = width * 10 + (*fmt++ - '0');  // 注意编码，(*fmt-'0') 为有符号 char 型，但符号位此时为 0，再转为无符号型 uint
-            }
-
-            // 特殊字符
-            while (1) {
-                switch (*fmt)
+            for (;;) {
+                switch (*fmt)  // 处理一些%之后的特殊字符
                 {
-                case 'x':
-                    hex = 1;
-                    sign = 0;
-                    fmt++;
-                    continue;
-                case 'X':
-                    hex = 2;
-                    sign = 0;
-                    fmt++;
-                    continue;
-                case 'u':
-                    sign = 0;  // 表示无符号数
-                    fmt++;
-                    continue;
-                case '.':  // 后面跟上数字，表示小数点后几位，这里需要读取到 frac_width
-                        // 数字之后一定有 f，读到 f 之后再处理
+                case 'u':      //%u，这个u表示无符号
+                    sign = 0;  // 标记这是个无符号数
+                    fmt++;     // 往后走一个字符
+                    continue;  // 回到for继续判断
 
+                case 'X':     //%X，X表示十六进制，并且十六进制中的A-F以大写字母显示，不要单独使用，一般是%Xd
+                    hex = 2;  // 标记以大写字母显示十六进制中的A-F
+                    sign = 0;
                     fmt++;
-                    while (*fmt <= '9' && *fmt >= '0') {
+                    continue;
+                case 'x':     //%x，x表示十六进制，并且十六进制中的a-f以小写字母显示，不要单独使用，一般是%xd
+                    hex = 1;  // 标记以小写字母显示十六进制中的a-f
+                    sign = 0;
+                    fmt++;
+                    continue;
+
+                case '.':                               // 其后边必须跟个数字，必须与%f配合使用，形如 %.10f：表示转换浮点数时小数部分的位数，比如%.10f表示转换浮点数时，小数点后必须保证10位数字，不足10位则用0来填补；
+                    fmt++;                              // 往后走一个字符，后边这个字符肯定是0-9之间，因为%.要求接个数字先
+                    while (*fmt >= '0' && *fmt <= '9') {
                         width_frac = width_frac * 10 + (*fmt++ - '0');
-                    }
-                    break;  // 特殊符号判断完毕
+                    }  // end while(*fmt >= '0' && *fmt <= '9')
+                    break;
+
                 default:
                     break;
-                }            
-                break;  // switch-case 出来后跳出 while 循环
-            }
-        
-            // 格式控制字符
-            switch (*fmt)
+                }  // end switch (*fmt)
+                break;
+            }  // end for ( ;; )
+
+            switch (*fmt) 
             {
-            case '%':
+            case '%':  // 只有%%时才会遇到这个情形，本意是打印一个%，所以
                 *buf++ = '%';
                 fmt++;
-                continue;  // 跳到 while (*fmt && buf < last) 重新开始循环，因为特殊字符可能在后面
-            
-            case 'd':
-                if (sign)
-                    i64 = (int64_t)va_arg(arg, int);
-                else 
-                    ui64 = (u_int64_t)va_arg(arg, u_int);  // 高位补零扩维
-                fmt++;
-                break;
+                continue;
 
-            case 's':
-                lp_str = va_arg(arg, u_char*);  
-                
-                // 无符号0-255 超过 128 的数字将会转为负值; 0-127 的字符能够正常解释
-                strncpy((char *)buf, (const char*)lp_str, strlen((const char*)lp_str) );
-                buf += strlen((const char*)lp_str);
+            case 'd':      // 显示整型数据，如果和u配合使用，也就是%ud,则是显示无符号整型数据
+                if (sign)  
+                    i64 = (int64_t)va_arg(args, int); 
+                else                     
+                    ui64 = (uint64_t)va_arg(args, u_int);
+                fmt++;
+                break;  // 这break掉，直接跳道switch后边的代码去执行,这种凡是break的，都不做fmt++;  *********************【switch后仍旧需要进一步处理】
+
+            case 's':                    
+                lp_str = va_arg(args, u_char *);
+                size = strlen((const char*)lp_str);
+                if (buf + size < last)
+                    strncpy((char *)buf, (const char*)lp_str, size);
+                buf += size;
 
                 // 参考代码：
-                // while (*lp_str && buf < last) 
-                //     *buf = *lp_str++;
+                // while (*p && buf < last) {
+                //     *buf++ = *p++;  // 那就装，比如  "%s"    ，   "abcdefg"，那abcdefg都被装进来
+                // }
                 fmt++;
-                continue;  // 字符串类型不用再进行剩余代码，重新进行 while
+                continue;  // 重新从while开始执行
 
-            case 'p':
-                ui64 = (u_int64_t) va_arg(arg, pid_t);
-                sign = 0;
+            case 'p':  // 转换一个pid_t类型
+                i64 = (int64_t)va_arg(args, pid_t);
+                sign = 1;
                 fmt++;
                 break;
 
-            case 'f':
-                frac = va_arg(arg, double);
+            case 'f':                       
+                frac = va_arg(args, double); 
                 if (frac < 0) {
-                    *buf++ = '-';
-                    frac = -frac;
+                    *buf++ = '-';  
+                    frac = -frac;  
                 }
-                ui64 = (u_int64_t)frac;
-                buf = ui64_string(buf, last, ui64, zero, hex, width);
+            
+                ui64 = (int64_t)frac;  
+                ui64_frac = 0;
 
+                // 如果要求小数点后显示多少位小数
                 if (width_frac) {
-                    scale = 1;
+                    scale = 1;  // 缩放从1开始
+                    for (int n = width_frac; n; n--)
+                        scale *= 10;
+                    ui64_frac = (uint64_t)((frac - (double)ui64) * scale);
+                }
 
-                    for (int i=0; i < width_frac; i++) scale = scale * 10;
-                    ui64_frac = (u_int64_t)(scale * (frac - (double)ui64));  // 不考虑进位，u_int64_t 将丢弃不需要的位
-                    
-                    if (buf < last) {*buf++ = '.';}  // 显示小数点
-                    buf = frac_string(buf, last, ui64_frac, zero, hex, width_frac);
+                // 正整数部分，先显示出来
+                buf = ui64_string(buf, last, ui64, zero, 0, width); 
+
+                if (width_frac)  // 指定了显示多少位小数
+                {
+                    if (buf < last) {
+                        *buf++ = '.';
+                    }
+                    buf = frac_string(buf, last, frac, '0', 0, width_frac);
                 }
                 fmt++;
-                continue;  // 注意：f 读到了，此部分格式祖字符串显示也结束了
+                continue;
 
-            default:  // 未找到上述几种格式控制字符 则原样输出，buf fmt 移动     
-                *buf++ = *fmt++;
-                continue;  
-            }
+            default:
+                *buf++ = *fmt++; 
+                continue;        
+            } // end switch (*fmt)
 
-            // 走到这里，处理除了 f 的其他类型，输出 ui64 
+            // 显示 %d %p 的，会走下来，原来 fmt 在判定到 *fmt == d *fmt == p 基础上，fmt++
+            // 调用 ui64_string 函数之后，不再 fmt++ 个人实现中加了两次
+
             if (sign) {
                 if (i64 < 0) {
                     *buf++ = '-';
-                    ui64 = (u_int64_t) (-i64);
+                    ui64 = (uint64_t)-i64;
                 } else {
-                    ui64 = (u_int64_t) (i64);
+                    ui64 = (uint64_t)i64;
                 }
-            }
+            }  // end if (sign)
+
             buf = ui64_string(buf, last, ui64, zero, hex, width);
-            // fmt++;  当 %d break 之后，fmt 已经 ++，因此不再需要 fmt++
-            continue;  // continue while
-        } else {  // 未识别到 % 符号，则会原样输出 end if (*fmt++ == '%')
-            *buf++ = *fmt++;
-            continue;  // continue while
-        }
-    }
+        } else {
+            *buf++ = *fmt++;  
+        }  // end if (*fmt == '%')
+    }  // end while (*fmt && buf < last)
+
     return buf;
 }
 
-// 思考：这里与参考代码不同的地方在于参考代码考虑了进位，当 frac_width != 0 需要进一步修正 ui64 这里并未考虑
-
-/**
- * @brief 将 u_int64_t 类型的整数，显示为字符串，采用前补零的方式 我们从后向前赋值
- * @param buf 
- * @param zero 
- * @param width 整数的显示宽度
- * @details 先不考虑十六进制
-*/
 u_char* ui64_string(u_char *buf, u_char *last, u_int64_t ui64, u_char zero, u_int64_t hexadecimal, u_int64_t width) {
     int non_zero = 0;  // 记录整数显示的有效位数
 
@@ -263,14 +258,7 @@ u_char* ui64_string(u_char *buf, u_char *last, u_int64_t ui64, u_char zero, u_in
 }
 
 
-/**
- * @brief 将 u_int64_t 类型的整数，显示为字符串，采用后补零的方式，因此采用从前向后的显示顺序
- * @param buf 
- * @param zero 
- * @param width 整数的显示宽度
- * @details 先不考虑小数进位问题
-*/
-u_char* frac_string(u_char *buf, u_char *last, u_int64_t ui64, u_char zero, u_int64_t hexadecimal, u_int64_t width_frac) {
+static u_char* frac_string(u_char *buf, u_char *last, u_int64_t ui64, u_char zero, u_int64_t hexadecimal, u_int64_t width_frac) {
     int non_zero = 0;  // 记录整数显示的有效位数
     
     static u_char hex[] = "0123456789abcdef"; 

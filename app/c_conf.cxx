@@ -1,13 +1,15 @@
+﻿//和处理系统配置文件相关的放这里
 
+//系统头文件放上边
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <vector>
 #include <iostream>
-#include <cstdio>
-#include <cstring>
-#include "c_conf.h"  // LPConfItem 在 global.h 声明
-#include "func.h"
 
-#define LINESIZE 200
-
+#include "macro.h"
+#include "c_conf.h" 
+#include "func.h"     
 
 // 静态成员变量赋值
 CConfig* CConfig::m_instance = nullptr;
@@ -80,11 +82,11 @@ bool CConfig::Load(const char* pfile) {
 
 void CConfig::Test() {
 
-    std::cout<< "*********** CConfig test ***********" << endl;
+    std::cout<< "*********** CConfig test ***********" << std::endl;
 
     for (auto it = m_itemlist.begin(); it != m_itemlist.end(); it++) {
-        std::cout<< "itemname: " << (*it)->itemname << endl;
-        std::cout<< "itemvalue: " << (*it)->itemvalue << endl;
+        std::cout<< "itemname: " << (*it)->itemname << std::endl;
+        std::cout<< "itemvalue: " << (*it)->itemvalue << std::endl;
     }
 }
 
@@ -106,3 +108,4 @@ int CConfig::GetInt(const char* itemname, const int def) {
     }
     return def;
 }
+

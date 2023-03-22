@@ -1,67 +1,94 @@
 ﻿
-#include <cstdio>
-#include <cstring>
+//整个程序入口函数放这里
+
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
-#include <iostream>
-#include "c_conf.h"
-#include "func.h"
+#include <string.h>
 
+#include "c_conf.h"  //和配置文件处理相关的类,名字带c_表示和类有关
+#include "func.h"    //各种函数声明
 
-int    g_argc = 0;
+//本文件用的函数声明
+static void freeresource();
+
+size_t   g_arglen = 0;       // 为main参数开辟的内存空间大小
+size_t   g_environlen = 0;   // 为环境变量开辟的内存空间大小
+
+int    g_argc = 0;        // 参数数量
 char** g_argv = NULL;     // 指向新分配内存中保存环境变量的各处，类似于 environ[i]
-char** g_init_argv = NULL;// 指向原环境变量的所在处
-
-char* g_p_envmem = NULL;  // 指向开辟内存的首地址，保存的环境变量的首地址
-int   g_environlen = 0;   // 为环境变量开辟的内存空间大小
+char** g_init_argv = NULL;// 指向原环境变量的所在处，用于放置新的标题字符串
 
 char* g_p_argmem = NULL;  // 指向开辟内存的首地址
-int   g_arglen = 0;       // 为main参数开辟的内存空间大小
-int*  g_p_arglen = NULL;  // 保存各参数的长度的数组，分配argc*int空间
+char* g_p_envmem = NULL;  // 指向开辟内存的首地址，保存的环境变量的首地址
 
-pid_t cur_pid;  // 当前进程的pid
+pid_t cur_pid;               //当前进程的pid
+pid_t parent_pid;            //父进程的pid
 
-CConfig* p_config;  // 配置文件相关的全局变量
+int main(int argc, char *const *argv)
+{       
+    int exitcode = 0;           //退出代码，先给0表示正常退出
+    int i;                      //临时用
 
-int main(int argc, char *const *argv) {
+    // 和进程本身有关的全局变量量
+    cur_pid    = getpid();      //取得进程pid
+    parent_pid = getppid();     //取得父进程的id 
 
-    
-    g_argc = argc;
-    g_init_argv = (char**)argv;
+    // 参数及环境变量的全局变量
+    for(i = 0; i < argc; i++)
+        g_arglen += strlen(argv[i]) + 1;
+ 
+    for(i = 0; environ[i]; i++) 
+        g_environlen += strlen(environ[i]) + 1;
 
-    int exitcode = 0;
+    g_argc = argc;        
+    g_init_argv = (char **) argv; 
 
-    log_init();
-    cur_pid = getpid();
-
-    CConfig* p_config = CConfig::GetInstance();
-    const char* conffile = "nginx.conf";
-
-    if (p_config->Load(conffile) == false) {
-        log_error_core(0, 0, "Configuration file [%s] loading failed, Exit", conffile);  // errnum == 0 
-        exitcode = 2;  // 标记找不到文件
-        // goto normexit;
+    CConfig *p_config = CConfig::GetInstance(); //单例类
+    if(p_config->Load("nginx.conf") == false) {        
+        std_error_core(0, "Failed to load the config file [%s], Now exit.", "nginx.conf");
+        exitcode = 2; //标记找不到文件
+        goto lblexit;
     }
-        
-  
-    p_config->Test();
 
-    init_setproctitle();
-    setproctitle("MyNginx");
-
-    
-    // 日志系统 测试
-    int level = 0; int errnum = 7;
-    const char* fmt = "测试输出 print a num ：%d";
-    log_error_core(1, errnum, fmt, 1000);
-
-    // 理想输出：日期  PID: 线程ID  [错误等级]:8  错误信息
-
-    // for(;;) {
-    //    sleep(1); //休息1秒
-    //    printf("休息1秒\n");
-    // }
-
-normexit:
-    close(log_s.fd);
+    //(3)一些初始化函数，准备放这里    
+    log_init();             //日志初始化(创建/打开日志文件)
+    if(init_signals() != 0) {
+        // 打印日志
+        exitcode = 1;
+        goto lblexit;
+    }
+   
+    init_setproctitle();    //把环境变量搬家
+    master_process_cycle();
+            
+lblexit:
+    freeresource();  
     return exitcode;
+}
+
+void freeresource() {
+    // (1)对于因为设置可执行程序标题导致的环境变量分配的内存，我们应该释放
+    if (g_argv) {
+        delete[] g_argv;
+        g_argv = NULL;
+    }
+
+    if (g_p_argmem) {
+        delete[] g_p_argmem;
+        g_p_argmem = NULL;
+    }
+
+    if (g_p_envmem) {
+        delete[] g_p_envmem;
+        g_p_envmem = NULL;
+    }
+
+    // CConfig 中的 list 会自动释放
+
+    // (2)关闭日志文件
+    if (log_s.fd != STDERR_FILENO && log_s.fd != -1) {
+        close(log_s.fd);  // 不用判断结果了
+        log_s.fd = -1;    // 标记下，防止被再次close吧
+    }
 }
