@@ -35,8 +35,6 @@
         "utility": "cpp",
         "initializer_list": "cpp",
         "iosfwd": "cpp",
-        "iostream": "cpp",
-        "istream": "cpp",
         "limits": "cpp",
         "new": "cpp",
         "numbers": "cpp",
@@ -44,8 +42,8 @@
         "stdexcept": "cpp",
         "streambuf": "cpp",
         "typeinfo": "cpp",
-        "cstring": "cpp",
-        "stack": "cpp",
-        "ctime": "cpp"
+        "iostream": "cpp",
+        "istream": "cpp",
+        "queue": "cpp"
     }
 }

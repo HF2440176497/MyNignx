@@ -1,22 +1,14 @@
 ﻿
 include config.mk
+.PHONY: all clean
+
 all:
 #-C是指定目录
-#make -C signal   
-
-#可执行文件应该放最后
-#make -C app      
-
-# 用shell命令for搞，shell里边的变量用两个$
-# make -C dir 进入到子目录执行 make
 	@for dir in $(BUILD_DIR); \
 	do \
 		make -C $$dir; \
 	done
 
-
 clean:
 #-rf：删除文件夹，强制删除
-	rm -rf app/link_obj app/dep nginx
-	rm -rf signal/*.gch app/*.gch
-
+	rm -rf app/link_obj
