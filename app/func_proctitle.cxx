@@ -8,8 +8,7 @@
 #include "global.h"
 
 //设置可执行程序标题相关函数：分配内存，并且把环境变量拷贝到新内存中来
-void init_setproctitle()
-{   
+void init_setproctitle() {   
     //这里无需判断penvmen == NULL,有些编译器new会返回NULL，有些会报异常，但不管怎样，如果在重要的地方new失败了，你无法收场，让程序失控崩溃，助你发现问题为好； 
     g_p_envmem = new char[g_environlen]; 
     memset(g_p_envmem,0,g_environlen);  //内存要清空防止出现问题
@@ -39,8 +38,7 @@ void init_setproctitle()
 }
 
 //设置可执行程序标题
-void setproctitle(const char *title)
-{
+void setproctitle(const char *title) {
 
     size_t titlelen = strlen(title); 
     size_t sum_size = g_arglen + g_environlen;

@@ -52,14 +52,25 @@ int main(int argc, char *const *argv)
     }
 
     //(3)一些初始化函数，准备放这里    
-    log_init();             //日志初始化(创建/打开日志文件)
+    init_log();             //日志初始化(创建/打开日志文件)
     if(init_signals() != 0) {
         // 打印日志
         exitcode = 1;
         goto lblexit;
     }
-   
+    
     init_setproctitle();    //把环境变量搬家
+
+    if (p_config->GetInt("Daemon", 1)) {
+        int dae = daemon_process();  // 三种情况：-1 1 0 s
+        if (dae == -1) {
+            exitcode = 1;
+            goto lblexit;
+        } else if (dae == 1) {
+            exitcode = 0;
+            goto lblexit;
+        } else { }  
+    }  
     master_process_cycle();
             
 lblexit:
