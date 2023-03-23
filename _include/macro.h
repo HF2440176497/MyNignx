@@ -1,6 +1,6 @@
 ﻿
-#ifndef __NGX_MACRO_H__
-#define __NGX_MACRO_H__
+#ifndef MACRO_H
+#define MACRO_H
 
 // 显示的错误信息最大数组长度
 #define MAX_ERROR_STR   2048   

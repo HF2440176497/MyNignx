@@ -78,7 +78,7 @@ void master_process_cycle() {
 static void start_worker_process(int threadnums) {
     int i;
     for (i = 0; i < threadnums; i++) {
-        spawn_process(i, "worker process");
+        spawn_process(i, WORKER_PROCESS_TITLE);
     } //end for
     return;
 }

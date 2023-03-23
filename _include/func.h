@@ -1,7 +1,7 @@
 ﻿//函数声明放在这个头文件里-------------------------------------------
 
-#ifndef __NGX_FUNC_H__
-#define __NGX_FUNC_H__
+#ifndef FUNC_H
+#define FUNC_H
 
 
 //字符串相关函数
@@ -13,7 +13,7 @@ void   init_setproctitle();
 void   setproctitle(const char *title);
 
 //和日志，打印输出有关
-void   log_init();
+void   init_log();
 void   std_error_core(int errnum, const char *fmt, ...);
 void   log_error_core(int level,  int err, const char *fmt, ...);
 
@@ -21,6 +21,13 @@ u_char *fmt_string_print(u_char *buf, u_char *last, const char *fmt, ...);
 u_char *fmt_string(u_char *buf, u_char *last,const char *fmt,va_list args);
 
 int    init_signals();
+
+//进程相关
+
+int    daemon_process();
 void   master_process_cycle();
+
+
+
 
 #endif  

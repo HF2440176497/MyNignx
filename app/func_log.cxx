@@ -17,21 +17,31 @@
 
 
 // 错误等级，和ngx_macro.h里定义的日志等级宏是一一对应关系
-static u_char err_levels[][20]  = 
-{
-    {"stderr"},    //0：控制台错误
-    {"emerg"},     //1：紧急
-    {"alert"},     //2：警戒
-    {"crit"},      //3：严重
-    {"error"},     //4：错误
-    {"warn"},      //5：警告
-    {"notice"},    //6：注意
-    {"info"},      //7：信息
-    {"debug"}      //8：调试
+static u_char err_levels[][20] = {
+    {"stderr"},  // 0：控制台错误
+    {"emerg"},   // 1：紧急
+    {"alert"},   // 2：警戒
+    {"crit"},    // 3：严重
+    {"error"},   // 4：错误
+    {"warn"},    // 5：警告
+    {"notice"},  // 6：注意
+    {"info"},    // 7：信息
+    {"debug"}    // 8：调试
 };
-log_t   log_s;
+log_t   log_s;  // 描述整个项目配置的日志属性
 
 static u_char* log_errno(u_char *buf, u_char *last, int err);
+
+
+static u_char* log_errno(u_char *buf, u_char *last, int errnum) {
+    const char* errinfo = strerror(errnum);
+    size_t len = strlen(errinfo);
+
+    buf = fmt_string_print(buf, last, " [%d: ", errnum);
+    buf = fmt_string_print(buf, last, "%s]", errinfo);
+
+    return buf;
+}
 
 void std_error_core(int errnum, const char *fmt, ...) {    
     u_char  errstr[MAX_ERROR_STR+1];
@@ -59,17 +69,6 @@ void std_error_core(int errnum, const char *fmt, ...) {
     write(STDERR_FILENO,errstr,p - errstr);
     
     return;
-}
-
-
-static u_char* log_errno(u_char *buf, u_char *last, int errnum) {
-    const char* errinfo = strerror(errnum);
-    size_t len = strlen(errinfo);
-
-    buf = fmt_string_print(buf, last, " [%d: ", errnum);
-    buf = fmt_string_print(buf, last, "%s]", errinfo);
-
-    return buf;
 }
 
 void log_error_core(int level, int errnum, const char *fmt, ...)
@@ -139,12 +138,13 @@ void log_error_core(int level, int errnum, const char *fmt, ...)
     return;
 }
 
-
-void log_init() {
+/**
+ * @brief 从配置文件中读取 日志路径 and 日志等级
+*/
+void init_log() {
     u_char *plogname = NULL;
     size_t nlen;
 
-    // 从配置文件中读取日志路径 和 日志等级
     CConfig *p_config = CConfig::GetInstance();
     plogname = (u_char *)p_config->GetString("Log");
     if(plogname == NULL) {
