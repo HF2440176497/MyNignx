@@ -30,9 +30,9 @@ signal_t signals[] = {
     {SIGQUIT, "SIGQUIT", signal_handler},  // 标识3
     {SIGIO, "SIGIO", signal_handler},      // 指示一个异步I/O事件【通用异步I/O信号】
     {SIGUSR1, "SIGUSR1", signal_handler},
-    {SIGSYS, "SIGSYS, SIG_IGN", NULL},         // 我们想忽略这个信号，SIGSYS表示收到了一个无效系统调用，如果我们不忽略，进程会被操作系统杀死，--标识31
-                                        // 所以我们把handler设置为NULL，代表 我要求忽略这个信号，请求操作系统不要执行缺省的该信号处理动作（杀掉我）
-    {0, NULL, NULL}  
+    {SIGSYS, "SIGSYS, SIG_IGN", nullptr},         // 我们想忽略这个信号，SIGSYS表示收到了一个无效系统调用，如果我们不忽略，进程会被操作系统杀死，--标识31
+                                        // 所以我们把handler设置为nullptr，代表 我要求忽略这个信号，请求操作系统不要执行缺省的该信号处理动作（杀掉我）
+    {0, nullptr, nullptr}  
 };
 
 // 信号处理函数 统一用此函数
@@ -60,11 +60,12 @@ int init_signals() {
         sigemptyset(&sa.sa_mask);
         sigaddset(&sa.sa_mask, sig->signo);  // 自己实现的程序中，添加此信号的阻塞
 
-        if (sigaction(sig->signo, &sa, NULL) == -1) {
+        if (sigaction(sig->signo, &sa, nullptr) == -1) {
             log_error_core(NGX_LOG_EMERG, errno, "sigaction(%s) failed", sig->signame);  // 显示到日志文件中去的
             return -1;                                                                       // 有失败就直接返回
         } else {
-            std_error_core(0, "sigaction(%s) succed!", sig->signame);  // 直接往屏幕上打印看看 ，不需要时可以去掉
+            log_error_core(NGX_LOG_INFO, 0, "sigaction(%s) succed!", sig->signame);
+            // std_error_core(0, "sigaction(%s) succed!", sig->signame);
         }
     }          
     return 0;  

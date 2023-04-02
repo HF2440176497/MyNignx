@@ -88,7 +88,7 @@ void log_error_core(int level, int errnum, const char *fmt, ...)
     memset(&tv,0,sizeof(struct timeval));    
     memset(&tm,0,sizeof(struct tm));
 
-    gettimeofday(&tv, NULL);            
+    gettimeofday(&tv, nullptr);            
 
     sec = tv.tv_sec;             
     localtime_r(&sec, &tm);      
@@ -142,19 +142,19 @@ void log_error_core(int level, int errnum, const char *fmt, ...)
  * @brief 从配置文件中读取 日志路径 and 日志等级
 */
 void init_log() {
-    u_char *plogname = NULL;
+    u_char *plogname = nullptr;
     size_t nlen;
 
     CConfig *p_config = CConfig::GetInstance();
     plogname = (u_char *)p_config->GetString("Log");
-    if(plogname == NULL) {
+    if(plogname == nullptr) {
         plogname = (u_char *) ERROR_LOG_PATH;
     }
     log_s.log_level = p_config->GetInt("LogLevel", NGX_LOG_NOTICE);  // 缺省日志等级设置为 NGX_LOG_NOTICE
     log_s.fd = open((const char *)plogname,O_WRONLY|O_APPEND|O_CREAT,0644);  
     
     if (log_s.fd == -1) {
-        std_error_core(errno,"[alert] could not open error log file: open() \"%s\" failed", plogname);
+        log_error_core(NGX_LOG_ALERT, errno,"[alert] could not open error log file: open() \"%s\" failed", plogname);
         log_s.fd = STDERR_FILENO;      
     }
     return;

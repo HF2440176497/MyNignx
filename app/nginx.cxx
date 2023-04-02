@@ -6,7 +6,9 @@
 #include <unistd.h>
 #include <string.h>
 
+#include "macro.h"
 #include "c_conf.h"  //和配置文件处理相关的类,名字带c_表示和类有关
+#include "c_socket.h"
 #include "func.h"    //各种函数声明
 
 //本文件用的函数声明
@@ -16,14 +18,17 @@ size_t   g_arglen = 0;       // 为main参数开辟的内存空间大小
 size_t   g_environlen = 0;   // 为环境变量开辟的内存空间大小
 
 int    g_argc = 0;        // 参数数量
-char** g_argv = NULL;     // 指向新分配内存中保存环境变量的各处，类似于 environ[i]
-char** g_init_argv = NULL;// 指向原环境变量的所在处，用于放置新的标题字符串
+char** g_argv = nullptr;     // 指向新分配内存中保存环境变量的各处，类似于 environ[i]
+char** g_init_argv = nullptr;// 指向原环境变量的所在处，用于放置新的标题字符串
 
-char* g_p_argmem = NULL;  // 指向开辟内存的首地址
-char* g_p_envmem = NULL;  // 指向开辟内存的首地址，保存的环境变量的首地址
+char* g_p_argmem = nullptr;  // 指向开辟内存的首地址
+char* g_p_envmem = nullptr;  // 指向开辟内存的首地址，保存的环境变量的首地址
 
 pid_t cur_pid;               //当前进程的pid
 pid_t parent_pid;            //父进程的pid
+
+
+CSocket* p_socket = new CSocket();
 
 int main(int argc, char *const *argv)
 {       
@@ -46,7 +51,7 @@ int main(int argc, char *const *argv)
 
     CConfig *p_config = CConfig::GetInstance(); //单例类
     if(p_config->Load("nginx.conf") == false) {        
-        std_error_core(0, "Failed to load the config file [%s], Now exit.", "nginx.conf");
+        log_error_core(NGX_LOG_ALERT, 0, "Failed to load the config file [%s], Now exit.", "nginx.conf");
         exitcode = 2; //标记找不到文件
         goto lblexit;
     }
@@ -82,17 +87,17 @@ void freeresource() {
     // (1)对于因为设置可执行程序标题导致的环境变量分配的内存，我们应该释放
     if (g_argv) {
         delete[] g_argv;
-        g_argv = NULL;
+        g_argv = nullptr;
     }
 
     if (g_p_argmem) {
         delete[] g_p_argmem;
-        g_p_argmem = NULL;
+        g_p_argmem = nullptr;
     }
 
     if (g_p_envmem) {
         delete[] g_p_envmem;
-        g_p_envmem = NULL;
+        g_p_envmem = nullptr;
     }
 
     // CConfig 中的 list 会自动释放

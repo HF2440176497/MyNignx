@@ -2,10 +2,7 @@
 #ifndef GBLDEF_H
 #define GBLDEF_H
 
-//一些比较通用的定义放在这里，比如typedef定义
-//一些全局变量的外部声明也放在这里
-
-//类型定义----------------
+#include "c_socket.h"
 
 //结构定义
 typedef struct {
@@ -13,11 +10,11 @@ typedef struct {
     char itemvalue[60];
 }ConfItem, *LPConfItem;
 
+
 //和运行日志相关 
 typedef struct {
 	int    log_level;   //日志级别 或者日志类型，ngx_macro.h里分0-8共9个级别
 	int    fd;          //日志文件描述符
-
 }log_t;
 
 //外部全局量声明
@@ -36,6 +33,8 @@ extern pid_t 	parent_pid;
 
 extern log_t 	log_s;  // 在 func_log.cxx 中定义的全局变量
 
-extern int worker_process_num;  // 子进程数量
+extern int g_worker_process_num;  // 子进程数量
+
+extern CSocket* p_socket;
 
 #endif

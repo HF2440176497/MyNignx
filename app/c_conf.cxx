@@ -27,14 +27,14 @@ CConfig::~CConfig() {
 */
 bool CConfig::Load(const char* pfile) {
     FILE* fp = fopen(pfile, "r");
-    if (fp == NULL) 
+    if (fp == nullptr) 
         return false;
     char line[LINESIZE];
 
     while(!feof(fp)) {
         
         memset(line, 0, LINESIZE);
-        if (fgets(line, LINESIZE-1, fp) == NULL)
+        if (fgets(line, LINESIZE-1, fp) == nullptr)
             continue;
         
         char *noteline, *sepline;
@@ -51,7 +51,7 @@ bool CConfig::Load(const char* pfile) {
             continue;
 
         // 去除行内注释
-        if (strchr(strline, '#') != NULL) {
+        if (strchr(strline, '#') != nullptr) {
             noteline = strchr(strline, '#');
             for (int k=0; k < strlen(noteline); k++)
                 noteline[k] = 0;
@@ -59,7 +59,7 @@ bool CConfig::Load(const char* pfile) {
         // 去除行尾空格、换行符；替换为结束符
         Rtrim(strline);
 
-        if (strchr(strline, '=') != NULL) {
+        if (strchr(strline, '=') != nullptr) {
             sepline = strchr(strline, '=');
             *sepline = '\0';
         } else {

@@ -1,5 +1,5 @@
-/home/wanghf/Codes/nginx/第四章/4章_4节/nginx/app/link_obj/c_conf.o: c_conf.cxx \
- /home/wanghf/Codes/nginx/第四章/4章_4节/nginx/_include/macro.h \
- /home/wanghf/Codes/nginx/第四章/4章_4节/nginx/_include/c_conf.h \
- /home/wanghf/Codes/nginx/第四章/4章_4节/nginx/_include/global.h \
- /home/wanghf/Codes/nginx/第四章/4章_4节/nginx/_include/func.h
+/home/wanghf/Project/Ch5/app/link_obj/c_conf.o: c_conf.cxx /home/wanghf/Project/Ch5/_include/macro.h \
+ /home/wanghf/Project/Ch5/_include/c_conf.h \
+ /home/wanghf/Project/Ch5/_include/global.h \
+ /home/wanghf/Project/Ch5/_include/c_socket.h \
+ /home/wanghf/Project/Ch5/_include/func.h
