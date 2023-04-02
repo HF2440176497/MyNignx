@@ -15,7 +15,10 @@
 #include "c_conf.h"
 
 
-
+/**
+ * @brief 调用者根据返回结果判断进程性质
+ * @return int 
+ */
 int daemon_process() {
     switch (fork()) {
     case -1:

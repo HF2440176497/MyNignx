@@ -3,6 +3,7 @@
 #ifndef FUNC_H
 #define FUNC_H
 
+#include <stdio.h>
 
 //字符串相关函数
 char* Ltrim(char []);
@@ -18,7 +19,7 @@ void   std_error_core(int errnum, const char *fmt, ...);
 void   log_error_core(int level,  int err, const char *fmt, ...);
 
 u_char *fmt_string_print(u_char *buf, u_char *last, const char *fmt, ...);
-u_char *fmt_string(u_char *buf, u_char *last,const char *fmt,va_list args);
+u_char *fmt_string(u_char *buf, u_char *last, const char *fmt, va_list args);
 
 int    init_signals();
 
@@ -26,8 +27,5 @@ int    init_signals();
 
 int    daemon_process();
 void   master_process_cycle();
-
-
-
 
 #endif  

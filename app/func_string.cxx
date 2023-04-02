@@ -32,7 +32,7 @@ char* Rtrim(char string[]) {
             string[strlen(string)-1] = 0; 
         else  {return string;}
     }
-    return NULL;
+    return nullptr;
 }
 
 u_char *fmt_string_print(u_char *buf, u_char *last, const char *fmt, ...) 
@@ -252,7 +252,7 @@ u_char* ui64_string(u_char *buf, u_char *last, u_int64_t ui64, u_char zero, u_in
         for (int i=0; i < width-non_zero; i++)
             *buf-- = zero;
     } else {
-        return NULL;  // 说明 buf 预留的空间不够显示 width 长度的字符
+        return nullptr;  // 说明 buf 预留的空间不够显示 width 长度的字符
     }
     return (buf+width+1);  // 此时 buf 正指向开头位置前一位置，但应当定位到字符串之后的首位置，加一是因为最后 buf--
 }
@@ -306,7 +306,7 @@ static u_char* frac_string(u_char *buf, u_char *last, u_int64_t ui64, u_char zer
             *buf++ = zero;
         
     } else {
-        return NULL;  // 说明 buf 预留的空间不够显示 width 长度的字符
+        return nullptr;  // 说明 buf 预留的空间不够显示 width 长度的字符
     }
     return buf;  // 此时 buf 正指向字符串之后的首位置
 }
