@@ -4,12 +4,6 @@
 
 #include "c_socket.h"
 
-//结构定义
-typedef struct {
-    char itemname[30];
-    char itemvalue[60];
-}ConfItem, *LPConfItem;
-
 
 //和运行日志相关 
 typedef struct {

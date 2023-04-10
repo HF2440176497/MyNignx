@@ -105,7 +105,7 @@ static void start_worker_process(int process_count) {
 
         CConfig *p_config = CConfig::GetInstance();
         sprintf(str, "ListenPort%d", port_num);
-        int port_value = p_config->GetInt(str, DEFAULT_PORT + port_num);  // 默认的端口设置为 10000+
+        int port_value = p_config->GetInt(str, DEFAULT_PORT + port_num);  // 默认的端口设置为 9000+
 
         // 端口对应线程的编号，即 process_num
         for (int process_num = 0; process_num < process_count; process_num++) {

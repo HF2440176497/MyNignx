@@ -59,11 +59,8 @@ void CSocket::connectpool_init() {
     size_t addr_len = sizeof(struct sockaddr);
     do {
         i--;
-        m_lpconnections[i].fd = -1;
-        m_lpconnections[i].rhandler = nullptr;
+        init_connection_item(&m_lpconnections[i]);
         m_lpconnections[i].next = lp_curnext;
-        memset((void*)&m_lpconnections[i].s_sockaddr, 0, addr_len);
-        m_lpconnections[i].s_lplistening = m_lplistenitem;
         lp_curnext = &m_lpconnections[i];
     } while (i);
 
@@ -101,7 +98,7 @@ void CSocket::epoll_init() {
         exit(-1);
     }
 
-    // 创建一个待命连接，
+    // 创建一个待命连接
     lp_connection_t lp_new_connitem = get_connection_item();
     if (lp_new_connitem == nullptr) {
         log_error_core(NGX_LOG_ALERT, errno, "CSocket::get_connection_item has failed at [%s]", "CSocket::epoll_init");
@@ -291,7 +288,9 @@ int CSocket::epoll_process_events(int port_num, int port_value, int timer) {
         if (revents & EPOLLIN) {
             log_error_core(NGX_LOG_ALERT, 0, "监听到可读事件 调用 rhandler");
             (this->*(lp_curconn->rhandler))(lp_curconn);
-            if (lp_curconn->fd == -1) {  // 说明 event_request_handler 回收了此连接（调用了 close_accepted_connection）
+            // 说明读取出错，跳出了 handler
+            // 若此时 event_request_handler 回收了此连接（说明调用了 close_accepted_connection）
+            if (lp_curconn->fd == -1) {  
                 epoll_ctl(m_epfd, EPOLL_CTL_DEL, curfd, NULL);  
                 continue;
             }
@@ -309,8 +308,7 @@ int CSocket::epoll_process_events(int port_num, int port_value, int timer) {
 
 /**
  * @brief （1）回收连接对象（2）关闭 connfd
- * @param lp_curconn 此时传入的 lp_curconn != nullptr 
- * 调用之后 lp_curconn 重新回到初始化状态
+ * @param lp_curconn 此时传入的 lp_curconn != nullptr 调用之后 lp_curconn 重新回到初始化状态
  */
 void CSocket::close_accepted_connection(lp_connection_t lp_curconn) {
     log_error_core(0, 0, "调用了 close_accepted_connection, 关闭了 connfd = [%d]", lp_curconn->fd);

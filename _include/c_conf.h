@@ -7,6 +7,13 @@
 #include "global.h"  
 #include <vector>
 
+
+// 结构定义 放在 c_conf.h 因为 c_conf 类才会包括此类型的成员
+typedef struct {
+    char itemname[30];
+    char itemvalue[60];
+}ConfItem, *LPConfItem;
+
 class CConfig {
 private:
     CConfig();

@@ -65,12 +65,9 @@ void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
         m_free_connection_count--;
 
         lp_newconn->fd = connfd;
-        lp_newconn->rhandler = &CSocket::event_request_handler;  // 新连接需要设置 rhandler，待命连接的 rhandler == event_accept_handler（本函数），此即状态转换的关键
-        // lp_newconn->s_lplistening = m_lplistenitem;  可以不用加此语句，因为初始化时已经指向各线程的 m_listenitem
-        // memcpy(&lp_newconn->s_sockaddr, &conn_addr, sizeof(conn_addr));  可以不用加此语句，因为 get_connection_item 就已经清空这个连接
-
-        // m_lplistenitem->s_lpconnection 并不需要这步，listenitem 并不指向有效连接
-
+        // lp_newconn->rhandler = &CSocket::event_request_handler; 
+        lp_newconn->rhandler = &CSocket::event_pkg_request_handler;
+        lp_newconn->s_lplistening = m_lplistenitem;
         epoll_add_event(connfd, 1, 0, EPOLL_CTL_ADD, lp_newconn);
     }
     return;
