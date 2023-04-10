@@ -2,6 +2,9 @@
 #ifndef MACRO_H
 #define MACRO_H
 
+#include "comm.h"
+#include "c_socket.h"
+
 // 显示的错误信息最大数组长度
 #define MAX_ERROR_STR   2048   
 
@@ -32,6 +35,11 @@
 #define MAX_TITLE_LEN 50
 #define MASTER_PROCESS_TITLE        "master process"
 
+// 监听端口相关
 #define DEFAULT_PORT 9000
+
+// 消息头与包结构相关
+#define PKG_HEADER_LEN              sizeof(COMM_PKG_HEADER)
+#define MSG_HEADER_LEN              sizeof(STRUC_MSG_HEADER)
 
 #endif
