@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include "macro.h"
+#include "global.h"
 #include "c_conf.h" 
 #include "func.h"     
 
@@ -109,3 +110,18 @@ int CConfig::GetInt(const char* itemname, const int def) {
     return def;
 }
 
+void CConfig::ReadConf_Proc() {
+    g_worker_process_num = GetInt("WorkProcesses", 2);
+    return;
+}
+
+void CConfig::ReadConf_Net() {
+    g_socket.m_port_count = GetInt("ListenPortCount", 2);
+    g_socket.m_total_connections = GetInt("WorkerConnections", 50);
+    return;
+}
+
+void CConfig::ReadConf_Thread() {
+    g_threadpoll.m_iCreateThread = GetInt("ThreadNum", 10);
+    return;
+}

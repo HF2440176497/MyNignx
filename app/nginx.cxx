@@ -7,9 +7,12 @@
 #include <string.h>
 
 #include "macro.h"
-#include "c_conf.h"  //和配置文件处理相关的类,名字带c_表示和类有关
-#include "c_socket.h"
-#include "func.h"    //各种函数声明
+#include "func.h"    // 各种函数声明
+#include "c_conf.h"  // 和配置文件处理相关的类
+#include "c_memory.h"
+#include "c_threadpool.h"
+#include "c_socketlogic.h"
+
 
 //本文件用的函数声明
 static void freeresource();
@@ -24,14 +27,15 @@ char** g_init_argv = nullptr;// 指向原环境变量的所在处，用于放置
 char* g_p_argmem = nullptr;  // 指向开辟内存的首地址
 char* g_p_envmem = nullptr;  // 指向开辟内存的首地址，保存的环境变量的首地址
 
-pid_t cur_pid;               //当前进程的pid
-pid_t parent_pid;            //父进程的pid
+pid_t cur_pid;               // 当前进程的pid
+pid_t parent_pid;            // 父进程的pid
+
+CMemory* p_mem_manager = CMemory::GetInstance();  // 单例类管理堆区上分配的内存
+CThreadPool g_threadpoll;
+CSocketLogic g_socket;
 
 
-CSocket* p_socket = new CSocket();
-
-int main(int argc, char *const *argv)
-{       
+int main(int argc, char *const *argv) {       
     int exitcode = 0;           //退出代码，先给0表示正常退出
     int i;                      //临时用
 
@@ -40,26 +44,25 @@ int main(int argc, char *const *argv)
     parent_pid = getppid();     //取得父进程的id 
 
     // 参数及环境变量的全局变量
-    for(i = 0; i < argc; i++)
+    for (i = 0; i < argc; i++)
         g_arglen += strlen(argv[i]) + 1;
  
-    for(i = 0; environ[i]; i++) 
+    for (i = 0; environ[i]; i++) 
         g_environlen += strlen(environ[i]) + 1;
 
     g_argc = argc;        
     g_init_argv = (char **) argv; 
 
-    CConfig *p_config = CConfig::GetInstance(); //单例类
-    if(p_config->Load("nginx.conf") == false) {        
-        log_error_core(NGX_LOG_ALERT, 0, "Failed to load the config file [%s], Now exit.", "nginx.conf");
+    CConfig *p_config = CConfig::GetInstance();
+    if (p_config->Load("nginx.conf") == false) {        
+        log_error_core(LOG_ALERT, 0, "Failed to load the config file [%s], Now exit.", "nginx.conf");
         exitcode = 2; //标记找不到文件
         goto lblexit;
     }
 
-    //(3)一些初始化函数，准备放这里    
+    // (3)一些初始化函数，准备放这里    
     init_log();             //日志初始化(创建/打开日志文件)
-    if(init_signals() != 0) {
-        // 打印日志
+    if (init_signals() != 0) {
         exitcode = 1;
         goto lblexit;
     }
@@ -71,11 +74,11 @@ int main(int argc, char *const *argv)
         if (dae == -1) {
             exitcode = 1;
             goto lblexit;
-        } else if (dae == 1) {
+        } else if (dae == 1) {  // 要退出的父进程释放资源
             exitcode = 0;
             goto lblexit;
         } else { }  
-    }  
+    }
     master_process_cycle();
             
 lblexit:
@@ -89,18 +92,14 @@ void freeresource() {
         delete[] g_argv;
         g_argv = nullptr;
     }
-
     if (g_p_argmem) {
         delete[] g_p_argmem;
         g_p_argmem = nullptr;
     }
-
     if (g_p_envmem) {
         delete[] g_p_envmem;
         g_p_envmem = nullptr;
     }
-
-    // CConfig 中的 list 会自动释放
 
     // (2)关闭日志文件
     if (log_s.fd != STDERR_FILENO && log_s.fd != -1) {

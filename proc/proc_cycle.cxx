@@ -13,6 +13,7 @@
 #include "macro.h"
 #include "global.h"
 #include "c_conf.h"
+#include "c_socketlogic.h"
 
 
 int g_worker_process_num;
@@ -28,17 +29,15 @@ static int spawn_process(int port_num, int port_value, int process_num);
 static void worker_process_cycle(int port_num, int port_value);
 
 /**
- * @brief master process 的配置读取函数
+ * @brief 父进程的配置读取函数
  * 主要是读取监听的端口数量
 */
 static void ReadConf() {
     CConfig* p_config = CConfig::GetInstance();
-    p_socket->m_port_count = p_config->GetInt("ListenPortCount", 2);  // 默认监听两个端口
-    p_socket->m_total_connections = p_config->GetInt("WorkerConnections", 50);
-    g_worker_process_num = p_config->GetInt("WorkProcesses", 4);
+    p_config->ReadConf_Proc();
+    p_config->ReadConf_Net();
     return;
 }
-
 
 /**
  * @brief 设置标题
@@ -58,8 +57,8 @@ static void init_master_process() {
     sigaddset(&set, SIGTERM);     //终止
     sigaddset(&set, SIGQUIT);     //终端退出符
 
-    if (sigprocmask(SIG_BLOCK, &set, nullptr) == -1) {        
-        log_error_core(NGX_LOG_ALERT,errno,"ngx_master_process_cycle()中sigprocmask()失败!");
+    if (sigprocmask(SIG_BLOCK, &set, nullptr) == -1) {
+        log_error_core(LOG_ALERT, errno, "ngx_master_process_cycle()中sigprocmask()失败!");
     }
 
     char title[g_arglen + g_environlen] = {0};
@@ -75,7 +74,6 @@ static void init_master_process() {
 
 
 void master_process_cycle() {
-    
     ReadConf();
     init_master_process();
     start_worker_process(g_worker_process_num);  // 这里要创建worker子进程 传入要创建的子进程数量 这里是全局变量
@@ -98,7 +96,7 @@ void master_process_cycle() {
 static void start_worker_process(int process_count) {
     char str[20];
     memset(str, 0 , strlen(str));
-    int port_count = p_socket->m_port_count;
+    int port_count = g_socket.m_port_count;
 
     for (int port_num = 0; port_num < port_count; port_num++) {
         // 在此处 直接读取端口号，传入 spawn，进而用于创建 socket
@@ -121,52 +119,52 @@ static void start_worker_process(int process_count) {
  * @param port_value 
  * @param process_num 当前端口对应线程的编号 0, ..., g_worker_process_num
  */
-static int spawn_process(int port_num, int port_value, int process_num)
-{
+static int spawn_process(int port_num, int port_value, int process_num) {
     pid_t  pid;  // pid 仅用于判别父子进程
     pid = fork();
     switch (pid)
     {  
-    case -1: //产生子进程失败
-        log_error_core(NGX_LOG_EMERG, errno, "Fork process at port_num: [%d] process_num: [%d] has failed", port_num, process_num);
+    case -1: // 产生子进程失败
+        log_error_core(LOG_EMERG, errno, "Fork process at port_num: [%d] process_num: [%d] has failed", port_num, process_num);
         return -1;
 
-    case 0:  //子进程分支
-        parent_pid = cur_pid;              // 因为是子进程了，所有原来的pid变成了父pid ngx_pid 全局变量，当前进程的 pid
-        cur_pid = getpid();                // 重新获取pid,即本子进程的pid
+    case 0:  // 子进程分支
+        parent_pid = cur_pid;              // cur_pid: 全局变量，当前进程的 pid
+        cur_pid = getpid();                // 重新获取pid，即本子进程的pid
         worker_process_cycle(port_num, port_value);    // 所有worker子进程，在这个函数里不断循环
         break;
 
-    default: //这个应该是父进程分支，直接break;，流程往switch之后走        
+    default: // 这个应该是父进程分支，直接break;，流程往switch之后走        
         break;
-    }//end switch
+    }// end switch
 
     return pid;
 }
 
 static void worker_process_cycle(int port_num, int port_value) {
-
-    init_worker_process(port_num, port_value);  // 调用 open_listen
-    log_error_core(0, 0, "子进程运行中");
-
+    init_worker_process(port_num, port_value); 
     for (;;) {
-        if (p_socket->epoll_process_events(port_num, port_value, -1) == -1) { 
-            log_error_core(0, 0, "子进程退出 epoll_process_events 失败");
+        if (g_socket.epoll_process_events(port_num, port_value, -1) == -1) { 
+            log_error_core(0, 0, "子进程退出：epoll_process_events 失败");
             exit(-1); 
         }
-    }  // end for(;;)
-    log_error_core(0, 0, "子进程退出 worker_process_cycle 结束");
+    }
+    g_threadpoll.StopAll();  // 仿照参考代码
+    log_error_core(0, 0, "子进程退出：worker_process_cycle 结束");
     return;
 }
 
 // 描述：子进程创建时调用本函数进行一些初始化工作
 static void init_worker_process(int port_num, int port_value) {
+    // 线程池为各个 worker 所有，因此将线程池的配置读取放在此处
+    CConfig* p_config = CConfig::GetInstance();
+    p_config->ReadConf_Thread();
+ 
     sigset_t set;
     sigemptyset(&set); 
     if (sigprocmask(SIG_SETMASK, &set, nullptr) == -1)  {
-        log_error_core(NGX_LOG_ALERT, errno, "sigprocmask has failed at [%s]", "init_worker_process");
+        log_error_core(LOG_ALERT, errno, "sigprocmask has failed at [%s]", "init_worker_process");
     }
-
     // 设置标题为 worker process [port_num]: [port_value]
     char title[MAX_TITLE_LEN];
     sprintf(title, "worker process [%d]: [%d]", port_num, port_value);
@@ -174,9 +172,9 @@ static void init_worker_process(int port_num, int port_value) {
 
     //....将来再扩充代码
     //....
-
-    p_socket->event_init(port_num, port_value);
-    p_socket->epoll_init();
+    g_threadpoll.Create(g_threadpoll.m_iCreateThread);  
+    g_socket.event_init(port_num, port_value);
+    g_socket.epoll_init();
 
     return;
 }

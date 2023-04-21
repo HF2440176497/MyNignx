@@ -45,6 +45,15 @@
         "iostream": "cpp",
         "istream": "cpp",
         "queue": "cpp",
-        "cstring": "cpp"
+        "cstring": "cpp",
+        "chrono": "cpp",
+        "ctime": "cpp",
+        "list": "cpp",
+        "ratio": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp",
+        "thread": "cpp",
+        "mutex": "cpp",
+        "condition_variable": "cpp"
     }
 }

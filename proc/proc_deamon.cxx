@@ -36,7 +36,7 @@ int daemon_process() {
     cur_pid = getpid();
 
     if (setsid() == -1) {
-        log_error_core(NGX_LOG_EMERG, errno, "Failed to create daemon process at [%s]", "setsid");
+        log_error_core(LOG_EMERG, errno, "Failed to create daemon process at [%s]", "setsid");
         return -1;
     }
     umask(0);
@@ -44,15 +44,15 @@ int daemon_process() {
 
     int fd = open("/dev/null", O_RDWR);
     if (fd == -1) {
-        log_error_core(NGX_LOG_EMERG, errno, "Failed to create daemon process at [%s]", "open /dev/null");
+        log_error_core(LOG_EMERG, errno, "Failed to create daemon process at [%s]", "open /dev/null");
         return -1;
     }
     if (dup2(fd, STDIN_FILENO) == -1) {
-        log_error_core(NGX_LOG_EMERG, errno, "Failed to create daemon process at [%s]", "redirect STDIN");
+        log_error_core(LOG_EMERG, errno, "Failed to create daemon process at [%s]", "redirect STDIN");
         return -1;
     }
     if (dup2(fd, STDOUT_FILENO) == -1) {
-        log_error_core(NGX_LOG_EMERG, errno, "Failed to create daemon process at [%s]", "redirect STDOUT");
+        log_error_core(LOG_EMERG, errno, "Failed to create daemon process at [%s]", "redirect STDOUT");
         return -1;
     }
 

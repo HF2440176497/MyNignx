@@ -74,7 +74,7 @@ void std_error_core(int errnum, const char *fmt, ...) {
 void log_error_core(int level, int errnum, const char *fmt, ...)
 {
     u_char  *last;
-    u_char  errstr[MAX_ERROR_STR+1];   //这个+1也是我放入进来的，本函数可以参考ngx_log_stderr()函数的写法；
+    u_char  errstr[MAX_ERROR_STR+1];   //这个+1也是我放入进来的，本函数可以参考LOG_stderr()函数的写法；
 
     memset(errstr,0,sizeof(errstr));  
     last = errstr + MAX_ERROR_STR;   
@@ -150,11 +150,11 @@ void init_log() {
     if(plogname == nullptr) {
         plogname = (u_char *) ERROR_LOG_PATH;
     }
-    log_s.log_level = p_config->GetInt("LogLevel", NGX_LOG_NOTICE);  // 缺省日志等级设置为 NGX_LOG_NOTICE
+    log_s.log_level = p_config->GetInt("LogLevel", LOG_NOTICE);  // 缺省日志等级设置为 LOG_NOTICE
     log_s.fd = open((const char *)plogname,O_WRONLY|O_APPEND|O_CREAT,0644);  
     
     if (log_s.fd == -1) {
-        log_error_core(NGX_LOG_ALERT, errno,"[alert] could not open error log file: open() \"%s\" failed", plogname);
+        log_error_core(LOG_ALERT, errno,"[alert] could not open error log file: open() \"%s\" failed", plogname);
         log_s.fd = STDERR_FILENO;      
     }
     return;

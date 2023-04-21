@@ -23,6 +23,8 @@ void *CMemory::AllocMemory(int memCount, bool ifmemset) {
  * @param point 
  */
 void CMemory::FreeMemory(void *point) {
-    if (point)
+    if (point) {
         delete[] ((char *)point);
+    }
+    point = nullptr;  // 原指针指空
 }

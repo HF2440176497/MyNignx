@@ -22,7 +22,6 @@
  * @details 循环 accept
 */
 void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
-
     struct sockaddr conn_addr;
     socklen_t addrlen = sizeof(conn_addr);
 
@@ -33,7 +32,7 @@ void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
 
     // 若待命连接的 fd 不是 listenfd，说明不是待命连接，直接退出
     if (lp_standby_conn->fd != m_listenfd) {
-        log_error_core(NGX_LOG_ALERT, 0, "当前 connection_t 非待命连接，无法建立三次握手 at [%s]", "event_accept_handler");
+        log_error_core(LOG_ALERT, 0, "当前 connection_t 非待命连接，无法建立三次握手 at [%s]", "event_accept_handler");
         exit(-1);
     }
 
@@ -47,18 +46,18 @@ void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
                 // continue;
                 return;
             }
-            log_error_core(NGX_LOG_ALERT , errno, "Invoking accept has overed or failed at [%s]", "event_accept_connection");
+            log_error_core(LOG_ALERT , errno, "Invoking accept has overed or failed at [%s]", "event_accept_connection");
             return;  // 其他错误，说明已经没有来握手的客户端了或者出错，直接返回
         }
 
         // 走到这里说明 connfd > 0 需要：设置非阻塞，调用 epoll_add_event
-        log_error_core(NGX_LOG_ALERT, 0, "三次握手建立连接 connfd = [%d]", connfd);
+        log_error_core(LOG_ALERT, 0, "三次握手建立连接 connfd = [%d]", connfd);
         if (setnonblocking(connfd)) { exit(-1); }
 
         // 创建一个有效连接
         lp_newconn = get_connection_item();
         if (lp_newconn == nullptr) {
-            log_error_core(NGX_LOG_ALERT, 0, "CSocket::get_connection_item has failed at [%s]", "CSocket::event_accept_connection");
+            log_error_core(LOG_ALERT, 0, "CSocket::get_connection_item has failed at [%s]", "CSocket::event_accept_connection");
             exit(-1);
         }
         m_connection_count++;

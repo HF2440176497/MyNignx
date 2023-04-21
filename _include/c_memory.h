@@ -1,6 +1,6 @@
 
-#ifndef MEMORY_H
-#define MEMORY_H
+#ifndef C_MEMORY_H
+#define C_MEMORY_H
 
 // 内存单例类
 // 未来实现内存池功能
