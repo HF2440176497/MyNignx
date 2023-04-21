@@ -61,10 +61,10 @@ int init_signals() {
         sigaddset(&sa.sa_mask, sig->signo);  // 自己实现的程序中，添加此信号的阻塞
 
         if (sigaction(sig->signo, &sa, nullptr) == -1) {
-            log_error_core(NGX_LOG_EMERG, errno, "sigaction(%s) failed", sig->signame);  // 显示到日志文件中去的
+            log_error_core(LOG_EMERG, errno, "sigaction(%s) failed", sig->signame);  // 显示到日志文件中去的
             return -1;                                                                       // 有失败就直接返回
         } else {
-            log_error_core(NGX_LOG_INFO, 0, "sigaction(%s) succed!", sig->signame);
+            log_error_core(LOG_INFO, 0, "sigaction(%s) succed!", sig->signame);
             // std_error_core(0, "sigaction(%s) succed!", sig->signame);
         }
     }          

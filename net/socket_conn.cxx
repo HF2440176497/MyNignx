@@ -33,7 +33,7 @@ void CSocket::init_connection_item(lp_connection_t lp_curconn) {
 lp_connection_t CSocket::get_connection_item() {
 
     if (m_free_lpconnections == nullptr) {
-        log_error_core(NGX_LOG_ALERT, errno, "connection pool has exhausted at [%s]", "get_connection_item()");  // 连接池已耗尽
+        log_error_core(LOG_ALERT, errno, "connection pool has exhausted at [%s]", "get_connection_item()");  // 连接池已耗尽
         return nullptr;
     }
     lp_connection_t lp_free_curconn = m_free_lpconnections;  // 保存返回值
@@ -58,7 +58,7 @@ lp_connection_t CSocket::get_connection_item() {
 }
 
 /**
- * @brief 释放连接池的连接，该连接重新回到初始化的状态，但 s_cursequence 保留为原值
+ * @brief 释放连接池的连接，该连接重新回到初始化的状态
  */
 void CSocket::free_connection_item(lp_connection_t lp_curconn) {
 
