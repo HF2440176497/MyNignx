@@ -15,8 +15,9 @@
 #include "c_socket.h"
 #include "c_socketlogic.h"
 #include "c_crc32.h"
+#include "c_lock.h"
 
-typedef bool (CSocketLogic::*handler)(char* msg);
+typedef bool (CSocketLogic::*handler)(lp_connection_t lp_conn, char* msg);
 
 static const handler status_handleset[] {
     nullptr,
@@ -37,17 +38,12 @@ CSocketLogic::~CSocketLogic() {
 }
 
 
-// 虚函数实现：将通用的处理部分放在此函数内
-// 此时已完成：包头中指定长度合法，消息完整
-// 应当完成：
-// 1. 定位：消息头，包头，包体（若存在）
-// 2. 检验：收取状态，防止非正常的调用
-// msg 指向的内存分配有 LEN+1，最后一个是 \0 字符
-// 若包体长度 == 0，msg_body 就会指向这个最后的 \0 
+// 此时包头中指定长度合法，消息完整
 // 
-// msg：消息头+包头+包体的完整消息
+// msg：消息头+包头+包体的完整消息 指向堆区空间，移除队列后还没有释放内存，会在 ThreadFunc 中释放内存
 int CSocketLogic::ThreadRecvProc(char* msg) {
-    log_error_core(LOG_STDERR, 0, "进入到 ThreadRecvProc 函数，线程开始处理消息");
+    pthread_t tid = pthread_self();
+
     STRUC_MSG_HEADER msg_header;
     memcpy(&msg_header, msg, MSG_HEADER_LEN);
     COMM_PKG_HEADER pkg_header;
@@ -58,15 +54,13 @@ int CSocketLogic::ThreadRecvProc(char* msg) {
     uint16_t body_len = pkg_len - PKG_HEADER_LEN;
     
     int cur_crc = ntohl(pkg_header.crc32);  // crc 为 int 型，相当于 uint_32_t 
-    const connection_t* lp_conn = msg_header.lp_curconn;  // 作为消费者，指向的连接对象只可访问不容修改
+    lp_connection_t lp_conn = msg_header.lp_curconn;  // 作为消费者，handler 可能将处理结果反馈给对应的连接对象，因此未采用 const
 
-    // 检验此时连接对象的连接状态，个人评价：是惊险且巧妙的设计，消费者要谨慎处理 lp_curconn
-    if (lp_conn->fd <= 0) {
-        log_error_core(LOG_STDERR, 0, "线程当前处理连接对象失效");
-        return -1;
-    }
-    if (lp_conn->s_cursequence != msg_header.msg_cursequence) {
-        log_error_core(LOG_STDERR, 0, "线程当前处理连接可能已回收");
+    // log_error_core(LOG_STDERR, 0, "ThreadRecvProc: 线程 [%d] 开始处理来自 [%d] 的消息", tid, lp_conn->fd);
+
+    // 检验此时连接对象的连接状态，这里我们不加锁
+    if (lp_conn->JudgeOutdate(msg_header.msg_cursequence) == false) {
+        log_error_core(LOG_STDERR, 0, "JudgeOutdate 返回，ThreadRecvProc 处理线程退出");
         return -1;
     }
     uint16_t imsgcode = ntohs(pkg_header.msgCode);
@@ -94,28 +88,51 @@ int CSocketLogic::ThreadRecvProc(char* msg) {
         log_error_core(LOG_STDERR, 0, "没有对应的处理函数");
         return -1;
     }
-    (this->*status_handleset[imsgcode])(msg);
+    (this->*status_handleset[imsgcode])(lp_conn, msg);  // 重申：msg 是完整消息
     return 0;
 }
 
-bool CSocketLogic::_HandleRegister(char* msg) {
-    log_error_core(LOG_STDERR, 0, "CSocketLogic::_HandleRegister 执行");
 
+bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, char* msg) {
+    pthread_t tid = pthread_self();
+    CLock lock(&lp_conn->s_connmutex);  // 当前连接对象各自的互斥量
+
+    log_error_core(LOG_INFO, 0, "线程 [%d] 获取到了锁 _HandleRegister, fd: [%d] ", tid, lp_conn->fd);
+    STRUC_MSG_HEADER msg_header;
+    memcpy(&msg_header, msg, MSG_HEADER_LEN);
+
+    if (lp_conn->JudgeOutdate(msg_header.msg_cursequence) == false) {
+        log_error_core(LOG_STDERR, 0, "JudgeOutdate 返回，_HandleRegister 返回");
+        return false;
+    }
+    // log_error_core(LOG_STDERR, 0, "CSocketLogic::_HandleRegister 执行");
     LPSTRUCT_REGISTER lp_struct = (LPSTRUCT_REGISTER)(msg + MSG_HEADER_LEN + PKG_HEADER_LEN);
 
-    log_error_core(LOG_INFO, 0, "_HandleRegister iType: [%d], username: [%s], password: [%s]", 
-    ntohl(lp_struct->iType), lp_struct->username, lp_struct->password);
+    log_error_core(LOG_INFO, 0, "线程 [%d] _HandleRegister fd: [%d], iType: [%d], username: [%s], password: [%s]", 
+     tid, lp_conn->fd, ntohl(lp_struct->iType), lp_struct->username, lp_struct->password);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return true;
 }
 
-bool CSocketLogic::_HandleLogin(char* msg) {
-    log_error_core(LOG_STDERR, 0, "CSocketLogic::_HandleLogin 执行");
+
+bool CSocketLogic::_HandleLogin(lp_connection_t lp_conn, char* msg) {
+    pthread_t tid = pthread_self();
+    log_error_core(LOG_INFO, 0, "线程 [%d] 获取到了锁 _HandleLogin, fd: [%d] ", tid, lp_conn->fd);
+
+    CLock lock(&lp_conn->s_connmutex);
+    STRUC_MSG_HEADER msg_header;
+    memcpy(&msg_header, msg, MSG_HEADER_LEN);
+
+    if (lp_conn->JudgeOutdate(msg_header.msg_cursequence) == false) {
+        log_error_core(LOG_STDERR, 0, "JudgeOutdate 返回，_HandleLogin 返回");
+        return false;
+    }
+    // log_error_core(LOG_STDERR, 0, "CSocketLogic::_HandleLogin 执行");
     LPSTRUCT_LOGIN lp_struct = (LPSTRUCT_LOGIN)(msg + MSG_HEADER_LEN + PKG_HEADER_LEN);
 
-    log_error_core(LOG_INFO, 0, "_HandleLogin username: [%s], password: [%s]", 
-     lp_struct->username, lp_struct->password);
+    log_error_core(LOG_INFO, 0, "线程 [%d] _HandleLogin fd: [%d], username: [%s], password: [%s]", 
+     tid, lp_conn->fd, lp_struct->username, lp_struct->password);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return true;

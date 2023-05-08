@@ -32,8 +32,9 @@ int daemon_process() {
     }
 
     // 子进程走到这里 已经在 main 中赋值的 parent_pid curpid 此处要更新
-    parent_pid = cur_pid;
-    cur_pid = getpid();
+    
+    parent_pid = cur_pid;           // cur_pid 此时是推出进程，作为 master 的父进程
+    master_pid = cur_pid = getpid();
 
     if (setsid() == -1) {
         log_error_core(LOG_EMERG, errno, "Failed to create daemon process at [%s]", "setsid");

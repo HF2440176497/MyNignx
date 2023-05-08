@@ -5,11 +5,13 @@
 #include <system_error>
 #include <condition_variable>
 
+#include <pthread.h>
 #include "c_threadpool.h"
 #include "c_conf.h"
 #include "global.h"
 #include "macro.h"
 #include "func.h"
+
 
 bool CThreadPool::m_shutdown = false;
 pthread_mutex_t CThreadPool::m_pthreadMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -17,12 +19,14 @@ pthread_cond_t CThreadPool::m_pthreadCond = PTHREAD_COND_INITIALIZER;
 
 std::atomic_uint  CThreadPool::m_iRunningThread = 0;
 std::list<char*>  CThreadPool::m_msgqueue = {};
-std::vector<LPThreadItem>  CThreadPool::m_threadvec = {};
+std::vector<CThreadPool::ThreadItem*> CThreadPool::m_threadvec = {}; 
+
 
 
 CThreadPool::CThreadPool() {
-    
+    m_iCreateThread = 10;  // 缺省值
 }
+
 
 /**
  * @brief 叫停所有线程，清空消息队列，回收 item 内存
@@ -81,29 +85,46 @@ WaitShutdown:
  * @param func 线程执行的回调函数
  * @param lp_item 回调函数参数
  */
-void CThreadPool::init_thread_item(LP_Func func, LPThreadItem lp_item) {
+void CThreadPool::init_thread_item(lp_Func func, ThreadItem* lp_item) {
     int errnum = pthread_create(&(lp_item->_handle), NULL, func, lp_item);  // 创建线程，错误不返回到errno，一般返回错误码
     if (errnum != 0) { // errnum 并不是 errno
         log_error_core(LOG_ALERT, 0, "CThreadPool::Create()创建线程失败，返回的错误码为 [%d]", errnum);
-        exit(-2);
+        exit(-1);
     }
+    return;
+}
+
+
+void CThreadPool::ReadConf() {
+    CConfig* p_config = CConfig::GetInstance();
+    m_iCreateThread = p_config->GetInt("ThreadNum", m_iCreateThread);
+    return;
+}
+
+/**
+ * @brief 线程池的初始化工作，都位于子进程中
+ */
+void CThreadPool::Initialize_SubProc() {
+    ReadConf();
+    // 待补充...
+
     return;
 }
 
 /**
  * @brief 应当在接收连接之前就创建好线程池
- * @param threadnum 
+ * @param threadnum 也可将成员作为参数
  * @return true 
  * @return false 
  */
-void CThreadPool::Create(int threadnum) {
-    for (int i = 0; i < threadnum; i++) {
-        LPThreadItem lp_threaditem = new ThreadItem(this); 
+void CThreadPool::Create() {
+    for (int i = 0; i < m_iCreateThread; i++) {
+        ThreadItem* lp_threaditem = new ThreadItem(this); 
         init_thread_item(&CThreadPool::ThreadFunc, lp_threaditem);  // _thread_fun 接收 thread_param 参数
         m_threadvec.push_back(lp_threaditem);
     }
 WaitRunning:
-    for (LPThreadItem lp_item:m_threadvec) {
+    for (ThreadItem* lp_item:m_threadvec) {
         if (lp_item->running == false) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             goto WaitRunning;
@@ -128,15 +149,15 @@ char* CThreadPool::get_msg_item() {
 }
 
 /**
- * @brief 线程对象的消息处理函数 此函数目前未用到
+ * @brief 线程对象的消息处理函数
  */
-void CThreadPool::MsgFunc(LPThreadItem lp_thread) {
-    log_error_core(LOG_STDERR, 0, "正在处理消息。。。");
-    std::this_thread::sleep_for(std::chrono::milliseconds(4000));  // 模拟处理消息
-    // do something。。。
-    log_error_core(LOG_STDERR, 0, "处理消息完毕。。。");
-    return;
-}
+// void CThreadPool::MsgFunc(ThreadItem* lp_thread) {
+//     log_error_core(LOG_STDERR, 0, "正在处理消息。。。");
+//     std::this_thread::sleep_for(std::chrono::milliseconds(4000));  // 模拟处理消息
+//     // do something。。。
+//     log_error_core(LOG_STDERR, 0, "处理消息完毕。。。");
+//     return;
+// }
 
 
 /**
@@ -150,7 +171,7 @@ void CThreadPool::MsgFunc(LPThreadItem lp_thread) {
  * 从线程的角度考虑，各个线程退出，一定先使得获得锁才能判断退出条件
  */
 void* CThreadPool::ThreadFunc(void* lp_item) {
-    LPThreadItem lp_thread = (LPThreadItem)lp_item;  
+    ThreadItem* lp_thread = static_cast<ThreadItem*>(lp_item);  
     CThreadPool* lp_this = lp_thread->lp_pool;
     pthread_t tid = pthread_self();  // 作用范围仅限于此函数
     log_error_core(LOG_INFO, 0, "线程进入 ThreadFunc 函数");
@@ -165,9 +186,9 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
             if (lp_thread->running == false) {  // 线程首次运行到此处，设置 running
                 lp_thread->running = true;
             }
-            log_error_core(LOG_STDERR, 0, "当前线程 [%d] 运行至 m_cond.wait，准备阻塞释放锁", tid);
+            log_error_core(LOG_INFO, 0, "当前线程 [%d] 运行至 m_cond.wait，阻塞释放锁", tid);
             pthread_cond_wait(&m_pthreadCond, &m_pthreadMutex);  // 没有消息，则解锁互斥量，并阻塞在此等待唤醒，唤醒时会重新加锁，但只有一个加锁成功。加锁成功的会循环判断判断         
-            log_error_core(LOG_STDERR, 0, "当前线程 [%d] 解除阻塞, 运行到 m_cond.wait 之后", tid);
+            // log_error_core(LOG_STDERR, 0, "当前线程 [%d]  m_cond.wait 之后", tid);
         }
         // 此时有可能没有消息，先判断退出条件
         if (lp_thread->ifshutdown) {
@@ -193,12 +214,12 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
             log_error_core(LOG_INFO, 0, "当前线程 [%d] 解锁失败 at ThreadFunc", tid);
             break;
         }
-        log_error_core(LOG_STDERR, 0, "线程拿到消息");
+        // log_error_core(LOG_STDERR, 0, "线程拿到消息");
         lp_this->m_iRunningThread.fetch_add(1, std::memory_order_seq_cst);
-        g_socket.ThreadRecvProc(lp_thread->msg);
+        g_socket.ThreadRecvProc(lp_thread->msg);  // 消息从队列中已拿走，此时并不需要互斥量
+        p_mem_manager->FreeMemory(lp_thread->msg);  // 指向的堆区空间也是 lp_curconn->s_msgmem 指向的堆区空间
         lp_this->m_iRunningThread.fetch_sub(1, std::memory_order_seq_cst);
-        p_mem_manager->FreeMemory(lp_thread->msg);
-    }
+    } // end while (1)
     log_error_core(LOG_ALERT, 0, "线程非人为因素退出");
     lp_thread->running = false;
     return nullptr;
@@ -212,7 +233,7 @@ void CThreadPool::InMsgRecv(char* msg) {
     if (errnum != 0) {
         log_error_core(LOG_INFO, 0, "线程池尝试收取消息，加锁失败 at InMsgRecv");
     }
-    m_msgqueue.push_back(msg);
+    m_msgqueue.push_back(msg);  // 相当于是浅拷贝
     errnum = pthread_mutex_unlock(&m_pthreadMutex);
     if (errnum != 0) {
         log_error_core(LOG_INFO, 0, "线程池收取消息，解锁失败 at InMsgRecv");

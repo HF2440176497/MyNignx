@@ -54,28 +54,49 @@ typedef struct _STRUCT_LOGIN {
 #pragma pack()
 
 struct listening_s {
+public:
+    listening_s(int listenfd, int port_value);
+
+public:
     int             fd;
     int             port;
-    lp_connection_t s_lpconnection;
+    lp_connection_t s_lpconnection;  // 指向待命连接
 };
 
 // 连接对象
 struct connection_s {
-    int               fd;
-    uint64_t          s_cursequence;  // 序号，标记取用次数，可以经过几次取用，get_item 中 ++
-    lp_event_handler  rhandler;       // 读操作时的函数句柄
-    lp_connection_t   next;
+public:
+    connection_s(int fd = -1);
+    virtual ~connection_s();
+    void GetOneToUse(const int connfd, struct sockaddr* connaddr);
+    void PutOneToFree();
+    void PutToStateMach();
+    bool JudgeOutdate(int sequence);  // 判断连接是否过期
 
+public:
+    // 连接信息相关
+    int               fd;
+    struct sockaddr   s_sockaddr;     // 这里用 sockaddr 类型
+    lp_event_handler  rhandler;       // 读操作时的函数句柄
+    uint64_t          s_cursequence;  // 序号，标记取用次数
+    uint32_t          events;         // 记录 epoll 监听事件类型
+
+    // 状态机相关
     u_char            s_curstat;      // 表示收包状态
     LPCOMM_PKG_HEADER s_headerinfo;   // 指向包头结构体，初始化时应当 nullptr
     char*             s_msgmem;       // 指向为整个消息开辟的内存，待传入消息队列
     char*             s_precvbuf;     // 接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
     unsigned int      s_recvlen;      // 要收到多少数据，由这个变量指定，和precvbuf配套使用，看具体应用的代码
 
-    struct sockaddr   s_sockaddr;     // 这里用 sockaddr 类型
-    lp_listening_t    s_lplistening;  // 始终指向被监听对象 m_lplistenitem
+    // 始终指向被监听对象 m_lplistenitem
+    lp_listening_t    s_lplistening;  
 
-    // 以下成员来自自己提出的包缓冲机制
+    // 连接对象互斥量
+    pthread_mutex_t   s_connmutex;    // 构造函数中初始化
+
+    // 延迟回收
+    time_t            s_inrevy_time;  // 当前连接进入回收队列的时间
+    int               s_inrecyList;   // 表示是否已经在延迟回收队列中，0 表示不在，1 表示在
 };
 
 #endif

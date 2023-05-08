@@ -54,20 +54,15 @@ void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
         log_error_core(LOG_ALERT, 0, "三次握手建立连接 connfd = [%d]", connfd);
         if (setnonblocking(connfd)) { exit(-1); }
 
-        // 创建一个有效连接
+        // 连接池中获得的是有效连接
         lp_newconn = get_connection_item();
         if (lp_newconn == nullptr) {
             log_error_core(LOG_ALERT, 0, "CSocket::get_connection_item has failed at [%s]", "CSocket::event_accept_connection");
             exit(-1);
         }
-        m_connection_count++;
-        m_free_connection_count--;
-
-        lp_newconn->fd = connfd;
-        // lp_newconn->rhandler = &CSocket::event_request_handler; 
+        lp_newconn->GetOneToUse(connfd, &conn_addr);
         lp_newconn->rhandler = &CSocket::event_pkg_request_handler;
-        lp_newconn->s_lplistening = m_lplistenitem;
-        epoll_add_event(connfd, 1, 0, EPOLL_CTL_ADD, lp_newconn);
-    }
+        epoll_oper_event(connfd, EPOLL_CTL_ADD, EPOLLET | EPOLLIN | EPOLLRDHUP | EPOLLERR, 0, lp_newconn);
+    }  // end while(1)
     return;
 }

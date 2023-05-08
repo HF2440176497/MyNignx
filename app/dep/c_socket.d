@@ -8,4 +8,5 @@
  /home/wanghf/Project/Ch6/_include/c_conf.h \
  /home/wanghf/Project/Ch6/_include/global.h \
  /home/wanghf/Project/Ch6/_include/c_socket.h \
+ /home/wanghf/Project/Ch6/_include/c_lock.h \
  /home/wanghf/Project/Ch6/_include/func.h

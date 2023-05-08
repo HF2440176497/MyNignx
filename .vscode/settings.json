@@ -54,6 +54,10 @@
         "stop_token": "cpp",
         "thread": "cpp",
         "mutex": "cpp",
-        "condition_variable": "cpp"
+        "condition_variable": "cpp",
+        "cerrno": "cpp",
+        "climits": "cpp",
+        "ios": "cpp",
+        "stack": "cpp"
     }
 }

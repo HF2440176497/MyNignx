@@ -37,7 +37,9 @@
 // 监听端口相关
 #define DEFAULT_PORT 9000
 
-// 消息头与包结构相关
+#define ADDR_LEN sizeof(struct sockaddr)
+
+// 消息头与包结构相关 结构体在 comm.h 中定义
 #define PKG_HEADER_LEN              sizeof(COMM_PKG_HEADER)
 #define MSG_HEADER_LEN              sizeof(STRUC_MSG_HEADER)
 

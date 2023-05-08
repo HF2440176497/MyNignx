@@ -20,13 +20,16 @@ static void freeresource();
 size_t   g_arglen = 0;       // 为main参数开辟的内存空间大小
 size_t   g_environlen = 0;   // 为环境变量开辟的内存空间大小
 
-int    g_argc = 0;        // 参数数量
+int    g_argc = 0;           // 参数数量
 char** g_argv = nullptr;     // 指向新分配内存中保存环境变量的各处，类似于 environ[i]
 char** g_init_argv = nullptr;// 指向原环境变量的所在处，用于放置新的标题字符串
 
 char* g_p_argmem = nullptr;  // 指向开辟内存的首地址
 char* g_p_envmem = nullptr;  // 指向开辟内存的首地址，保存的环境变量的首地址
 
+int g_stopEvent;             // 标志当前进程退出
+
+pid_t master_pid;            // 作为守护进程的 master process
 pid_t cur_pid;               // 当前进程的pid
 pid_t parent_pid;            // 父进程的pid
 
@@ -61,7 +64,7 @@ int main(int argc, char *const *argv) {
     }
 
     // (3)一些初始化函数，准备放这里    
-    init_log();             //日志初始化(创建/打开日志文件)
+    init_log();
     if (init_signals() != 0) {
         exitcode = 1;
         goto lblexit;
@@ -93,12 +96,10 @@ void freeresource() {
         g_argv = nullptr;
     }
     if (g_p_argmem) {
-        delete[] g_p_argmem;
-        g_p_argmem = nullptr;
+        p_mem_manager->FreeMemory(g_p_argmem);
     }
     if (g_p_envmem) {
-        delete[] g_p_envmem;
-        g_p_envmem = nullptr;
+        p_mem_manager->FreeMemory(g_p_envmem);
     }
 
     // (2)关闭日志文件
