@@ -46,8 +46,6 @@ public:
     bool Load(const char* pfile);
     int GetInt(const char* itemname, const int def);
     const char* GetString(const char* itemname);
-    void ReadConf_Proc();
-    void ReadConf_Net();
     void ReadConf_Thread();
     void Test();
 

@@ -19,7 +19,6 @@
 int g_worker_process_num;
 
 // 静态函数声明 内部链接 不添加到 func.h 只有 master_process_cycle 非静态函数
-static void ReadConf();
 static void init_master_process();
 
 static void init_worker_process(int port_num, int port_value);
@@ -29,20 +28,10 @@ static int spawn_process(int port_num, int port_value, int process_num);
 static void worker_process_cycle(int port_num, int port_value);
 
 /**
- * @brief 父进程的配置读取函数
- * 主要是读取监听的端口数量
-*/
-static void ReadConf() {
-    CConfig* p_config = CConfig::GetInstance();
-    p_config->ReadConf_Proc();
-    p_config->ReadConf_Net();
-    return;
-}
-
-/**
- * @brief 设置标题
+ * @brief 主进程的相关初始化工作
 */
 static void init_master_process() {
+    // 屏蔽指定信号
     sigset_t set;       
     sigemptyset(&set);   
 
@@ -61,33 +50,45 @@ static void init_master_process() {
         log_error_core(LOG_ALERT, errno, "ngx_master_process_cycle()中sigprocmask()失败!");
     }
 
+    // 设置进程标题
     char title[g_arglen + g_environlen] = {0};
     strcpy(title, MASTER_PROCESS_TITLE);
     strcat(title, " ");
-
-    for (int i=0; i < g_argc; i++)
+    for (int i=0; i < g_argc; i++) {
         strcat(title, g_argv[i]);
-
+    }
     setproctitle(title);  // 其中含有标题过长检测
+
+    // 父进程相关的配置信息
+    CConfig* p_config = CConfig::GetInstance();
+    g_worker_process_num = p_config->GetInt("WorkProcesses", 2);
+
+    // socket 的相关初始化
+    g_socket.Initialize();
+    
     return;
 }
 
 
 void master_process_cycle() {
-    ReadConf();
     init_master_process();
     start_worker_process(g_worker_process_num);  // 这里要创建worker子进程 传入要创建的子进程数量 这里是全局变量
     
-    sigset_t set;  // 此 set 仅用于 master process 内
+    sigset_t set;
     sigemptyset(&set);
 
-    // 父进程在此循环
-    for ( ;; ) {
-        // log_error_core(0, 0, "haha--这是父进程");
-        // sleep(5);
-        // sigsuspend(&set);  // 新 set 是不屏蔽的，收到信号之后，恢复原来屏蔽   
-        // std_error_core(0, "Now we just finish sigsuspend ");
+    if (cur_pid == master_pid) { // master process 完成创建后在此循环
+        while (1) {}
+    } else {  // worker process 退出后到此分支
+        log_error_core(LOG_NOTICE, 0, "worker process 退出，pid = [%p]", cur_pid);
+        return;
     }
+    // for ( ;; ) {
+    //     // log_error_core(0, 0, "haha--这是父进程");
+    //     // sleep(5);
+    //     // sigsuspend(&set);  // 新 set 是不屏蔽的，收到信号之后，恢复原来屏蔽   
+    //     // std_error_core(0, "Now we just finish sigsuspend ");
+    // }
     return;
 }
 
@@ -105,9 +106,14 @@ static void start_worker_process(int process_count) {
         sprintf(str, "ListenPort%d", port_num);
         int port_value = p_config->GetInt(str, DEFAULT_PORT + port_num);  // 默认的端口设置为 9000+
 
-        // 端口对应线程的编号，即 process_num
+        // 线程的编号，即 process_num
         for (int process_num = 0; process_num < process_count; process_num++) {
-            if (spawn_process(port_num, port_value, process_num) == -1) { exit(-1); }
+            if (spawn_process(port_num, port_value, process_num) == -1) { 
+                exit(-1); 
+            } else {  // 父进程与有可能退出的子进程 父进程需要继续循环，产生子进程；子进程此时可以返回到 master_process_cycle 然后继续判断
+                if (cur_pid == master_pid) { continue; } 
+                else { return; }
+            }
         }
     }
     return;
@@ -129,15 +135,14 @@ static int spawn_process(int port_num, int port_value, int process_num) {
         return -1;
 
     case 0:  // 子进程分支
-        parent_pid = cur_pid;              // cur_pid: 全局变量，当前进程的 pid
-        cur_pid = getpid();                // 重新获取pid，即本子进程的pid
+        parent_pid = cur_pid;              // cur_pid: 此时为 mater process 的 pid 
+        cur_pid = getpid();                // 更新 cur_pid
         worker_process_cycle(port_num, port_value);    // 所有worker子进程，在这个函数里不断循环
         break;
 
-    default: // 这个应该是父进程分支，直接break;，流程往switch之后走        
+    default: // 父进程分支，
         break;
     }// end switch
-
     return pid;
 }
 
@@ -145,21 +150,21 @@ static void worker_process_cycle(int port_num, int port_value) {
     init_worker_process(port_num, port_value); 
     for (;;) {
         if (g_socket.epoll_process_events(port_num, port_value, -1) == -1) { 
-            log_error_core(0, 0, "子进程退出：epoll_process_events 失败");
+            log_error_core(LOG_ALERT, 0, "子进程退出：epoll_process_events 失败");
             exit(-1); 
         }
     }
-    g_threadpoll.StopAll();  // 仿照参考代码
+    log_error_core(LOG_ALERT, 0, "子进程退出 准备回收");
+    g_threadpoll.StopAll();
+    g_socket.Shutdown_SubProc();
     log_error_core(0, 0, "子进程退出：worker_process_cycle 结束");
     return;
 }
 
 // 描述：子进程创建时调用本函数进行一些初始化工作
 static void init_worker_process(int port_num, int port_value) {
-    // 线程池为各个 worker 所有，因此将线程池的配置读取放在此处
-    CConfig* p_config = CConfig::GetInstance();
-    p_config->ReadConf_Thread();
- 
+
+    // 屏蔽额外指定信号，子进程会继承父进程的信号的 signal mask and dispositions
     sigset_t set;
     sigemptyset(&set); 
     if (sigprocmask(SIG_SETMASK, &set, nullptr) == -1)  {
@@ -172,7 +177,12 @@ static void init_worker_process(int port_num, int port_value) {
 
     //....将来再扩充代码
     //....
-    g_threadpoll.Create(g_threadpoll.m_iCreateThread);  
+
+    // 线程池在开启监听之前创建
+    g_threadpoll.Initialize_SubProc();
+    g_threadpoll.Create();
+
+    g_socket.Initialize_SubProc();
     g_socket.event_init(port_num, port_value);
     g_socket.epoll_init();
 

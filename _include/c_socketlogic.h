@@ -8,8 +8,8 @@ class CSocketLogic: public CSocket {
 
 public:
     virtual int ThreadRecvProc(char* msg);
-    bool _HandleRegister(char* msg);
-    bool _HandleLogin(char* msg);
+    bool _HandleRegister(lp_connection_t lp_conn, char* msg);
+    bool _HandleLogin(lp_connection_t lp_conn, char* msg);
     
 public:
     CSocketLogic(/* args */);

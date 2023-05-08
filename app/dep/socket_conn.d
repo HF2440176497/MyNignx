@@ -5,5 +5,7 @@
  /home/wanghf/Project/Ch6/_include/c_threadpool.h \
  /home/wanghf/Project/Ch6/_include/c_socketlogic.h \
  /home/wanghf/Project/Ch6/_include/c_socket.h \
+ /home/wanghf/Project/Ch6/_include/comm.h \
  /home/wanghf/Project/Ch6/_include/c_socket.h \
- /home/wanghf/Project/Ch6/_include/func.h
+ /home/wanghf/Project/Ch6/_include/func.h \
+ /home/wanghf/Project/Ch6/_include/c_lock.h

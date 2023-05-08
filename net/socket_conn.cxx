@@ -1,72 +1,119 @@
 
 #include <errno.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "macro.h"
 #include "global.h"
+#include "comm.h"
 #include "c_socket.h"
 #include "func.h"
+#include "c_lock.h"
+
+listening_s::listening_s(int listenfd, int port_value): fd(listenfd), port(port_value){
+    s_lpconnection = nullptr;
+}
 
 /**
- * @brief 将连接对象 lp_curconn 成员恢复至初始状态，next 成员需外部赋值处理
- * @param lp_curconn 
+ * @brief 创建待命连接时会传入参数
  */
-void CSocket::init_connection_item(lp_connection_t lp_curconn) {
-    memset(lp_curconn, 0, sizeof(connection_t));
-    lp_curconn->fd = -1;
-    lp_curconn->s_cursequence = 0;
-    lp_curconn->rhandler = nullptr;
-    lp_curconn->s_lplistening = m_lplistenitem;
+connection_s::connection_s(int fd): fd(fd) {
+    memset(&s_sockaddr, 0, ADDR_LEN);
+    s_inrecyList = 0;
+    s_cursequence = 0;
+    pthread_mutex_init(&s_connmutex, NULL);
+}
 
-    lp_curconn->s_headerinfo = nullptr;
-    lp_curconn->s_msgmem = nullptr;
-    lp_curconn->s_precvbuf = nullptr;
-    lp_curconn->s_curstat = _PKG_HD_INIT;
+connection_s::~connection_s() {
+    pthread_mutex_destroy(&s_connmutex);
+}
+
+/**
+ * @brief 连接重新进入状态机的成员设置
+ */
+void connection_s::PutToStateMach() {
+    s_curstat = _PKG_HD_INIT;
+    s_msgmem = nullptr;
+    s_headerinfo = nullptr;
+    s_precvbuf = nullptr;
+    s_recvlen = PKG_HEADER_LEN;
     return;
 }
 
 /**
- * @brief 获取、分配空闲链表中的元素 此函数只负责结构体成员 s_lplistening s_cursequence 的赋值
- * @details 具体操作是链表指针移动
- * @return 返回结构体指针 若返回 nullptr 说明此次没有分配
-*/
-lp_connection_t CSocket::get_connection_item() {
+ * @brief 作为有效连接启用，接着进入状态机
+ */
+void connection_s::GetOneToUse(const int connfd, struct sockaddr* lp_connaddr) {
+    fd = connfd;
+    memcpy(&s_sockaddr, lp_connaddr, ADDR_LEN);
+    s_cursequence++;
+    PutToStateMach();
+    s_inrecyList = 0;
+    return;
+}
 
-    if (m_free_lpconnections == nullptr) {
-        log_error_core(LOG_ALERT, errno, "connection pool has exhausted at [%s]", "get_connection_item()");  // 连接池已耗尽
-        return nullptr;
-    }
-    lp_connection_t lp_free_curconn = m_free_lpconnections;  // 保存返回值
-    lp_connection_t lp_free_nextconn = lp_free_curconn->next;
 
-    // 我们目的一直是返回 m_free_lpconnections 
-    // 并且使 m_free_lpconnections 更新到后续的可行的节点
-    // 因此返回时 lp_free_curconn 不会更新，更新 m_free_lpconnections
-
-    while (lp_free_nextconn != nullptr) {
-        if (lp_free_nextconn->fd == -1) 
-            break;
-        lp_free_nextconn = lp_free_nextconn->next;  // != -1 继续向后找
-    }
-    // 若 lp_free_nextconn == nullptr 不必再判断 lp_free_nextconn->fd
-    // m_free_lpconnections = lp_free_nextconn = nullptr 此时返回的 lp_free_curconn 是最后一个结点
-
-    m_free_lpconnections = lp_free_nextconn;
-    ++lp_free_curconn->s_cursequence;  // 取用次数自增
-
-    return lp_free_curconn;
+/**
+ * @brief 连接对象相关成员的设置，用于延迟回收线程中
+ */
+void connection_s::PutOneToFree() {
+    log_error_core(LOG_INFO, 0, "PutOneToFree");
+    CLock lock(&s_connmutex);
+    fd = -1;
+    s_cursequence++;
+    return;
 }
 
 /**
- * @brief 释放连接池的连接，该连接重新回到初始化的状态
+ * @brief 判断连接对象是否过期失效
  */
-void CSocket::free_connection_item(lp_connection_t lp_curconn) {
+bool connection_s::JudgeOutdate(int sequence) {
+    if (fd <= 0) {
+        log_error_core(LOG_STDERR, 0, "线程当前处理连接对象失效");
+        return false;
+    }
+    if (s_inrecyList == 1) {
+        log_error_core(LOG_ALERT, 0, "线程当前处理连接对象已进入回收队列，不再处理");
+        return false;
+    }
+    if (s_cursequence != sequence) {
+        log_error_core(LOG_STDERR, 0, "线程当前处理连接可能已回收");
+        return false;
+    }
+    return true;
+}
 
-    uint64_t cursequence = lp_curconn->s_cursequence;
-    init_connection_item(lp_curconn);
-    lp_curconn->next = m_free_lpconnections;
-    lp_curconn->s_cursequence = cursequence; ++lp_curconn->s_cursequence;
 
-    m_free_lpconnections = lp_curconn;
+/**
+ * @brief 获取有效连接时调用此函数 配合 GetOneToUse
+ * m_lplistenitem 已在创建线程池中设置
+ * @return lp_connection_t 
+ */
+lp_connection_t CSocket::get_connection_item() {
+    CLock lock(&m_socketmutex);
+    lp_connection_t lp_getconn;
+    if (!m_free_connectionList.empty()) {
+        lp_getconn = m_free_connectionList.front();
+        m_free_connectionList.pop_front();
+        m_free_connection_count--;
+    } else {  // 空闲列表中已没有连接，需要创建更多连接
+        log_error_core(LOG_INFO, 0, "空闲连接不足，创建一个额外连接对象 当前连接总数[%d]", m_connection_count+1);
+        lp_getconn = new connection_t();
+        m_connectionList.push_back(lp_getconn);
+        m_connection_count++;  // 总连接数
+    }
+    lp_getconn->s_lplistening = m_lplistenitem;
+    return lp_getconn;
+}
+
+
+/**
+ * @brief 连接回到空闲连接池以备，关闭连接时调用
+ */
+void CSocket::free_connection_item(lp_connection_t lp_conn) {
+    log_error_core(LOG_INFO, 0, "free_connection_item");
+    CLock lock(&m_socketmutex);    
+    m_free_connectionList.push_back(lp_conn);
+    m_free_connection_count++;
     return;
 }
