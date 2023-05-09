@@ -86,9 +86,9 @@ private:
     std::atomic_uint                  m_connection_count;       // 当前 worker process 中连接对象总数
     std::atomic_uint                  m_free_connection_count;  // 当前 worker process 中空闲连接对象数
     lp_listening_t                    m_lplistenitem;
-    pthread_mutex_t                   m_socketmutex;            // 对于连接池操作的互斥量
+    pthread_mutex_t                   m_socketmutex;            // 对于连接池操作的互斥量，同时保护空闲连接队列，总队列
 
-    std::list<lp_connection_t> m_recy_connectionList;    // 延迟待回收的连接
+    std::list<lp_connection_t> m_recy_connectionList;           // 延迟待回收的连接
     std::vector<CSocket::ThreadItem*> m_threadVector;           // CSocket 额外的辅助线程
     pthread_mutex_t                   m_recymutex;              // 保护延迟回收队列的互斥量
 };

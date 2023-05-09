@@ -29,7 +29,7 @@ connection_s::~connection_s() {
 }
 
 /**
- * @brief 连接重新进入状态机的成员设置
+ * @brief 连接重新进入收取状态机的成员设置
  */
 void connection_s::PutToStateMach() {
     s_curstat = _PKG_HD_INIT;
@@ -42,24 +42,32 @@ void connection_s::PutToStateMach() {
 
 /**
  * @brief 作为有效连接启用，接着进入状态机
+ * 需要清空之前处理线程对连接的作用：
  */
 void connection_s::GetOneToUse(const int connfd, struct sockaddr* lp_connaddr) {
     fd = connfd;
     memcpy(&s_sockaddr, lp_connaddr, ADDR_LEN);
+
     s_cursequence++;
-    PutToStateMach();
-    s_inrecyList = 0;
+    PutToStateMach();  // 收取消息的相关成员
+
+    // 回收队列
+    s_inrecyList = 0;   // 不在回收队列内
+    s_inrevy_time = 0;  // 此时不进行标记时间
     return;
 }
 
-
 /**
- * @brief 连接对象相关成员的设置，用于延迟回收线程中
+ * @brief 连接对象相关成员的设置，用于延迟回收线程
  */
 void connection_s::PutOneToFree() {
-    log_error_core(LOG_INFO, 0, "PutOneToFree");
-    CLock lock(&s_connmutex);
-    fd = -1;
+    if (fd != -1) {
+        log_error_core(LOG_ALERT, 0, "非法调用 PutOneToFree 此连接对象未正确关闭");
+        return;
+    }
+    if (s_inrecyList != 1) {
+        log_error_core(LOG_ALERT, 0, "非法调用 PutOneToFree 此连接对象未进入回收队列");
+    }
     s_cursequence++;
     return;
 }

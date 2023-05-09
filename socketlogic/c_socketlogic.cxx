@@ -94,18 +94,23 @@ int CSocketLogic::ThreadRecvProc(char* msg) {
 
 
 bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, char* msg) {
-    pthread_t tid = pthread_self();
-    CLock lock(&lp_conn->s_connmutex);  // 当前连接对象各自的互斥量
-
-    log_error_core(LOG_INFO, 0, "线程 [%d] 获取到了锁 _HandleRegister, fd: [%d] ", tid, lp_conn->fd);
+    
     STRUC_MSG_HEADER msg_header;
     memcpy(&msg_header, msg, MSG_HEADER_LEN);
+    pthread_t tid = pthread_self();
 
+    // 双重加锁机制：第一次判断避免了无谓的加锁；第二次判断是在加锁之后进行 避免了被打断
     if (lp_conn->JudgeOutdate(msg_header.msg_cursequence) == false) {
-        log_error_core(LOG_STDERR, 0, "JudgeOutdate 返回，_HandleRegister 返回");
+        log_error_core(LOG_STDERR, 0, "第一次判断 JudgeOutdate 返回，_HandleRegister 返回");
+        return false;
+    } else {
+        CLock lock(&lp_conn->s_connmutex);
+    }
+    if (lp_conn->JudgeOutdate(msg_header.msg_cursequence) == false) {
+        log_error_core(LOG_STDERR, 0, "第二次判断 JudgeOutdate 返回，_HandleRegister 返回");
         return false;
     }
-    // log_error_core(LOG_STDERR, 0, "CSocketLogic::_HandleRegister 执行");
+    log_error_core(LOG_INFO, 0, "线程 [%d] 获取到了锁 _HandleRegister, fd: [%d] ", tid, lp_conn->fd);
     LPSTRUCT_REGISTER lp_struct = (LPSTRUCT_REGISTER)(msg + MSG_HEADER_LEN + PKG_HEADER_LEN);
 
     log_error_core(LOG_INFO, 0, "线程 [%d] _HandleRegister fd: [%d], iType: [%d], username: [%s], password: [%s]", 
@@ -117,20 +122,25 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, char* msg) {
 
 
 bool CSocketLogic::_HandleLogin(lp_connection_t lp_conn, char* msg) {
-    pthread_t tid = pthread_self();
-    log_error_core(LOG_INFO, 0, "线程 [%d] 获取到了锁 _HandleLogin, fd: [%d] ", tid, lp_conn->fd);
 
-    CLock lock(&lp_conn->s_connmutex);
     STRUC_MSG_HEADER msg_header;
     memcpy(&msg_header, msg, MSG_HEADER_LEN);
-
+    pthread_t tid = pthread_self();
+    
+    // 双重加锁机制：第一次判断避免了无谓的加锁；第二次判断是在加锁之后进行 避免了被打断
     if (lp_conn->JudgeOutdate(msg_header.msg_cursequence) == false) {
-        log_error_core(LOG_STDERR, 0, "JudgeOutdate 返回，_HandleLogin 返回");
+        log_error_core(LOG_STDERR, 0, "第一次判断 JudgeOutdate 返回，_HandleLogin 返回");
+        return false;
+    } else {
+        CLock lock(&lp_conn->s_connmutex);
+    }
+    if (lp_conn->JudgeOutdate(msg_header.msg_cursequence) == false) {
+        log_error_core(LOG_STDERR, 0, "第二次判断 JudgeOutdate 返回，_HandleLogin 返回");
         return false;
     }
-    // log_error_core(LOG_STDERR, 0, "CSocketLogic::_HandleLogin 执行");
-    LPSTRUCT_LOGIN lp_struct = (LPSTRUCT_LOGIN)(msg + MSG_HEADER_LEN + PKG_HEADER_LEN);
+    log_error_core(LOG_INFO, 0, "线程 [%d] 获取到了锁 _HandleLogin, fd: [%d] ", tid, lp_conn->fd);
 
+    LPSTRUCT_LOGIN lp_struct = (LPSTRUCT_LOGIN)(msg + MSG_HEADER_LEN + PKG_HEADER_LEN);
     log_error_core(LOG_INFO, 0, "线程 [%d] _HandleLogin fd: [%d], username: [%s], password: [%s]", 
      tid, lp_conn->fd, lp_struct->username, lp_struct->password);
 
