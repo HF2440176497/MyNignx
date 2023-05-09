@@ -81,7 +81,7 @@ public:
     uint64_t          s_cursequence;  // 序号，标记取用次数
     uint32_t          events;         // 记录 epoll 监听事件类型
 
-    // 状态机相关
+    // 收取状态机相关
     u_char            s_curstat;      // 表示收包状态
     LPCOMM_PKG_HEADER s_headerinfo;   // 指向包头结构体，初始化时应当 nullptr
     char*             s_msgmem;       // 指向为整个消息开辟的内存，待传入消息队列

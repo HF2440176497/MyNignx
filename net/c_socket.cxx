@@ -148,7 +148,7 @@ void* CSocket::RecyConnThreadFunc(void* lp_item) {
                 for (std::list<lp_connection_t>::iterator it = begin; it != end;) {
                     lp_connection_t lp_conn = *it;
                     it = m_recy_connectionList.erase(it);
-                    lp_conn->PutOneToFree();  // PutOneToFree() 已设置互斥量
+                    lp_conn->PutOneToFree();
                     lp_socket->free_connection_item(lp_conn);
                 }
             } // end while
@@ -190,13 +190,12 @@ void* CSocket::RecyConnThreadFunc(void* lp_item) {
 
 
 /**
- * @brief 
- * 何处调用：close_accepted_connection
- * @param lp_conn
+ * @brief 何处调用：close_accepted_connection
+ * @param lp_conn 此时仍然有 conn_mutex 保护 lp_conn
  */
 void CSocket::InRecyConnQueue(lp_connection_t lp_conn) {
     if (lp_conn->s_inrecyList == 1) {
-        log_error_core(LOG_INFO, 0, "当前连接已经位于延迟回收队列中");
+        log_error_core(LOG_ERR, 0, "当前连接已经位于延迟回收队列中 InRecyConnQueue 重复调用");
         return;
     }
     CLock lock(&m_recymutex);
@@ -477,12 +476,14 @@ int CSocket::epoll_process_events(int port_num, int port_value, int timer) {
  */
 void CSocket::close_accepted_connection(lp_connection_t lp_conn) {
     log_error_core(0, 0, "关闭了 connfd = [%d]，开始放入回收队列", lp_conn->fd);
+    CLock lock(&lp_conn->s_connmutex);
     int fd_toclose = lp_conn->fd;
     epoll_oper_event(fd_toclose, EPOLL_CTL_DEL, 0, 0, lp_conn);
     if (close(fd_toclose) == -1) {
         log_error_core(LOG_ALERT, errno, "Closeing fd of current conn_t has failed at [%s]", "CSocket::close_accepted_connection");
         exit(-1);
     }
+    lp_conn->fd = -1;
     InRecyConnQueue(lp_conn);
     return;
 }
