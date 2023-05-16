@@ -59,17 +59,18 @@ CMemory* CMemory::m_instance = nullptr;  // 定义并初始化
  * @param buf 
  * @param buflen 要求接收的数据的长度 不要传入 0 以免发生意外情况
  * @return 正常情况下返回 buflen，-1 说明读取错误，< buflen 说明读取完毕，但不符合要求的长度
- * ssize_t 与 size_t 的区别：ssize_t 有符号整型，32 位 or 64 位；size_t 同理是无符号整型
+ * ssize_t 与 size_t 的区别：ssize_t 有符号整型 long int，32 位 or 64 位；size_t 同理是无符号整型
  * 实际传入的 buf，应当有 buflen + 1 空间，结尾是 0
  * 
  * 新增说明：正常情况的返回值 最小 == 0
  * @details 封装了连接出错，关闭连接的操作
  */
-ssize_t CSocket::recvproc(lp_connection_t lp_curconn, char* buf, ssize_t buflen) {
-    char* lp_curbuf = buf;
+ssize_t CSocket::recvproc(lp_connection_t lp_conn, char* buf, ssize_t recv_len) {
+    int fd = lp_conn->fd;
+    char* cur_buf = buf;
     ssize_t total_len = 0;
     while (true) {
-        ssize_t n = recv(lp_curconn->fd, lp_curbuf, buflen-total_len, 0);  // buflen-total 是 buf 剩余的空间
+        ssize_t n = recv(fd, cur_buf, recv_len-total_len, 0);  // buflen-total 是 buf 剩余的空间
         if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // log_error_core(LOG_ALERT, errno, "此轮已读取完缓冲区, 实际读取长度 = [%d], 要求读取长度 = [%d]", total_len, buflen);
@@ -78,39 +79,74 @@ ssize_t CSocket::recvproc(lp_connection_t lp_curconn, char* buf, ssize_t buflen)
                 // ...
                 continue; 
             } else {
-                log_error_core(LOG_ALERT, errno , "读取出错, 连接: [%d] fd: [%d] 读取出错", lp_curconn, lp_curconn->fd);
-                close_accepted_connection(lp_curconn);
+                log_error_core(LOG_ALERT, errno , "读取出错, 连接: [%d] fd: [%d] 读取出错", lp_conn, fd);
+                close_accepted_connection(lp_conn);
                 return -1;
             }
         } else if (n == 0) {
-            log_error_core(LOG_STDERR, 0 , "对端已关闭, 连接: [%d] fd: [%d]", lp_curconn, lp_curconn->fd);
-            close_accepted_connection(lp_curconn);
+            log_error_core(LOG_STDERR, 0 , "对端已关闭, 连接: [%d] fd: [%d]", lp_conn, fd);
+            close_accepted_connection(lp_conn);
             return -1;
-        } else {  // 读取到数据
-            if (n == buflen-total_len) {
-                // log_error_core(LOG_STDERR, 0 , "已读取完指定长度数据 buflen = [%d]", buflen);
-                return buflen;
-            } else {  // n < buflen-total_len 需要继续读取
-                lp_curbuf += n;  // 指针移动到新的位置
-                total_len += n;  // 记录此轮读取到的总长度
-                continue;
-            }
+        } else if (n < recv_len-total_len) {
+            cur_buf += n;
+            total_len += n;  
+            continue;  
+        } else {
+            return recv_len;
         }
     }
-    close_accepted_connection(lp_curconn);
+    close_accepted_connection(lp_conn);
     return -1;  // 若意外情况退出 while 循环，返回 -1 表示异常
+}
+
+/**
+ * @brief 发送指定长度的数据，直到发送完或缓冲区满则返回
+ * @param lp_conn 
+ * @param buf 
+ * @param send_len 理应发送长度
+ * @return ssize_t 实际发送长度
+ */
+ssize_t CSocket::sendproc(lp_connection_t lp_conn, char* buf, ssize_t send_len) {
+
+    ssize_t total_len = 0;
+    char* cur_buf = buf;  
+    int fd = lp_conn->fd;
+
+    while (true) {
+        ssize_t n = send(fd, cur_buf, send_len-total_len, 0);
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return total_len;
+            } else if (errno == EINTR) {
+                continue;
+            } else {
+                log_error_core(LOG_ALERT, errno , "发送出错, fd: [%d]", fd);
+                return -1;
+            }
+        } else if (n == 0) {
+            log_error_core(LOG_ALERT, errno , "发送时对端关闭, fd: [%d]", fd);
+            return -1;
+        } else if (n < send_len-total_len) { 
+            cur_buf += n;
+            total_len += n;
+            continue;
+        } else {  // 直接发送成功，这样保证重复调用 send 时，send_len-total_len > 0，因为 == 0 效果未知
+            return send_len;
+        }
+    }
+    return -1;
 }
 
 
 /**
- * @brief 有限状态机：根据处理结果更新状态
+ * @brief 收包的有限状态机：根据处理结果更新状态
  * 当连接关闭时，连接对象的释放交给 recvproc 函数调用 close_accepted_connection 来处理
  * @param lp_effec_conn 
  * @todo 
  */
-void CSocket::event_pkg_request_handler(lp_connection_t lp_conn) {
+void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
     log_error_core(LOG_INFO, 0, "进入状态机, 连接: [%d] fd: [%d]", lp_conn, lp_conn->fd);
-    unsigned int suppose_size;
+    size_t suppose_size;
     while (true) {
         if (lp_conn->s_curstat == _PKG_HD_INIT) {
             char* header_mem = new char[PKG_HEADER_LEN](); 
@@ -231,21 +267,20 @@ void CSocket::pkg_header_proc(lp_connection_t lp_curconn) {
     // 根据包头内指定的包长度，判断包头是否合法
     if (pkg_size < PKG_HEADER_LEN || pkg_size > _PKG_MAX_LENGTH-1000) { 
         log_error_core(LOG_ALERT, 0, "包头不合法，重新回到 _PKG_HD_INIT"); 
-        // p_mem_manager->FreeMemory(lp_curconn->s_headerinfo);
         lp_curconn->s_curstat = _PKG_HD_INIT;
         return;                 
     }
     // 分配内存，作为 s_msgmem
     size_t msg_size = MSG_HEADER_LEN + pkg_size;
     size_t pkg_body_size = pkg_size - PKG_HEADER_LEN;
-    lp_curconn->s_msgmem = new char[msg_size+1]();
+    lp_curconn->s_msgrecvmem = new char[msg_size+1]();
     
     // 构建并拷贝消息头
     STRUC_MSG_HEADER msg_header;
     msg_header.lp_curconn = lp_curconn;
     msg_header.msg_cursequence = lp_curconn->s_cursequence;
 
-    char* buf = (char*)memcpy(lp_curconn->s_msgmem, &msg_header, MSG_HEADER_LEN) + MSG_HEADER_LEN;
+    char* buf = (char*)memcpy(lp_curconn->s_msgrecvmem, &msg_header, MSG_HEADER_LEN) + MSG_HEADER_LEN;
     lp_curconn->s_precvbuf = (char*)memcpy(buf, lp_curconn->s_headerinfo, PKG_HEADER_LEN) + PKG_HEADER_LEN;  // 定位到包体需要读取到的位置
     lp_curconn->s_recvlen = pkg_body_size;
 
@@ -282,9 +317,23 @@ int CSocket::pkg_body_recv(lp_connection_t lp_curconn) {
  */
 void CSocket::pkg_body_proc(lp_connection_t lp_conn) {
     log_error_core(LOG_INFO, 0, "包体收取结束，放入消息队列 连接：[%d]", lp_conn->fd);
-    g_threadpoll.InMsgRecv(lp_conn->s_msgmem);  
-    lp_conn->s_msgmem = nullptr;
+    g_threadpoll.InMsgRecv(lp_conn->s_msgrecvmem);  
+    lp_conn->s_msgrecvmem = nullptr;
     p_mem_manager->FreeMemory(lp_conn->s_headerinfo);
     lp_conn->PutToStateMach();
+    return;
+}
+
+
+/**
+ * @brief EPOLLOUT 的响应函数
+ * @param lp_conn 
+ */
+void CSocket::event_writable_request_handler(lp_connection_t lp_conn) {
+    log_error_core(LOG_INFO, 0, "EPOLLOUT 响应，writable_request_handler 调用");
+    int errnum = sem_post(&m_sendsem);
+    if (errnum == -1) {
+        log_error_core(LOG_ERR, 0, "writable_request_handler sem_post 失败");
+    }
     return;
 }
