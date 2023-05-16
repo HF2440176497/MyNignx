@@ -5,12 +5,14 @@
 #include <system_error>
 #include <condition_variable>
 
-#include <pthread.h>
-#include "c_threadpool.h"
-#include "c_conf.h"
 #include "global.h"
 #include "macro.h"
 #include "func.h"
+
+#include <pthread.h>
+#include "c_threadpool.h"
+#include "c_conf.h"
+#include "c_lock.h"
 
 
 bool CThreadPool::m_shutdown = false;
@@ -226,7 +228,8 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
 }
 
 /**
- * @brief 消息入队列，唤醒等待在 ThreadFunc 的线程
+ * @brief 消息入队列，唤醒线程
+ * 调用 Call 函数不必加锁
  */
 void CThreadPool::InMsgRecv(char* msg) {
     int errnum = pthread_mutex_lock(&m_pthreadMutex);
@@ -243,7 +246,7 @@ void CThreadPool::InMsgRecv(char* msg) {
 }
 
 /**
- * @brief 试图唤醒一个线程，被 CThreadPool::InMsgRecv 调用
+ * @brief 试图唤醒一个线程
  */
 void CThreadPool::Call() {
     log_error_core(LOG_STDERR, 0, "调用 Call，尝试唤醒线程");

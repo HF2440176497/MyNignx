@@ -61,8 +61,12 @@ void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
             exit(-1);
         }
         lp_newconn->GetOneToUse(connfd, &conn_addr);
-        lp_newconn->rhandler = &CSocket::event_pkg_request_handler;
-        epoll_oper_event(connfd, EPOLL_CTL_ADD, EPOLLET | EPOLLIN | EPOLLRDHUP | EPOLLERR, 0, lp_newconn);
+        lp_newconn->rhandler = &CSocket::event_readable_request_handler;
+        lp_newconn->whandler = &CSocket::event_writable_request_handler;
+        if (epoll_oper_event(connfd, EPOLL_CTL_ADD, EPOLLET | EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, 0, lp_newconn) == -1) {
+            close_connection(lp_newconn);
+            return;
+        }
     }  // end while(1)
     return;
 }

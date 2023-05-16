@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <string.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #include "macro.h"
 #include "global.h"
@@ -19,7 +20,6 @@ listening_s::listening_s(int listenfd, int port_value): fd(listenfd), port(port_
  */
 connection_s::connection_s(int fd): fd(fd) {
     memset(&s_sockaddr, 0, ADDR_LEN);
-    s_inrecyList = 0;
     s_cursequence = 0;
     pthread_mutex_init(&s_connmutex, NULL);
 }
@@ -33,7 +33,7 @@ connection_s::~connection_s() {
  */
 void connection_s::PutToStateMach() {
     s_curstat = _PKG_HD_INIT;
-    s_msgmem = nullptr;
+    s_msgrecvmem = nullptr;
     s_headerinfo = nullptr;
     s_precvbuf = nullptr;
     s_recvlen = PKG_HEADER_LEN;
@@ -47,13 +47,14 @@ void connection_s::PutToStateMach() {
 void connection_s::GetOneToUse(const int connfd, struct sockaddr* lp_connaddr) {
     fd = connfd;
     memcpy(&s_sockaddr, lp_connaddr, ADDR_LEN);
-
+    // 收取消息的相关成员
     s_cursequence++;
-    PutToStateMach();  // 收取消息的相关成员
-
+    PutToStateMach();
     // 回收队列
     s_inrecyList = 0;   // 不在回收队列内
     s_inrevy_time = 0;  // 此时不进行标记时间
+    // 发送消息的相关成员
+    s_continuesend = 0;
     return;
 }
 
@@ -68,6 +69,7 @@ void connection_s::PutOneToFree() {
     if (s_inrecyList != 1) {
         log_error_core(LOG_ALERT, 0, "非法调用 PutOneToFree 此连接对象未进入回收队列");
     }
+    // p_mem_manager->FreeMemory(s_msgsendmem);  // 此时发送消息的线程可能未发送完整 存在重复释放 后期用智能指针
     s_cursequence++;
     return;
 }
@@ -123,5 +125,42 @@ void CSocket::free_connection_item(lp_connection_t lp_conn) {
     CLock lock(&m_socketmutex);    
     m_free_connectionList.push_back(lp_conn);
     m_free_connection_count++;
+    return;
+}
+
+/**
+ * @brief 此时的连接对象不在监听树上，在树上意味着随时可能来数据
+ * 因此是添加到监听树时或之前出错，则调用此函数
+ * @param lp_conn 
+ */
+void CSocket::close_connection(lp_connection_t lp_conn) {
+    CLock lock(&lp_conn->s_connmutex);
+    int fd_close = lp_conn->fd;
+    if (close(fd_close) == -1) {
+        log_error_core(LOG_ALERT, errno, "Closeing fd of current conn_t has failed at [%s]", "CSocket::close_connection");
+        exit(-1);
+    }
+    lp_conn->fd = -1;
+    lp_conn->s_cursequence++;
+    free_connection_item(lp_conn);
+    return;
+}
+
+/**
+ * @brief 6.3 更新：延迟回收机制 以异步的方式交给线程去处理
+ * 需要判断，lp_conn 是否已经在 InRecyQueue 中，是的话不需要再添加进去了
+ * @param lp_curconn 此时传入的 lp_curconn != nullptr 调用之后 lp_curconn 重新回到初始化状态
+ */
+void CSocket::close_accepted_connection(lp_connection_t lp_conn) {
+    log_error_core(0, 0, "关闭了 connfd = [%d]，开始放入回收队列", lp_conn->fd);
+    CLock lock(&lp_conn->s_connmutex);
+    int fd_toclose = lp_conn->fd;
+    epoll_oper_event(fd_toclose, EPOLL_CTL_DEL, 0, 0, lp_conn);
+    if (close(fd_toclose) == -1) {
+        log_error_core(LOG_ALERT, errno, "Closeing fd of current conn_t has failed at [%s]", "CSocket::close_accepted_connection");
+        exit(-1);
+    }
+    lp_conn->fd = -1;
+    InRecyConnQueue(lp_conn);
     return;
 }

@@ -16,6 +16,9 @@
 
 #define _PKG_MAX_LENGTH      30000  // 包头中包长度的最大值
 
+#define LEN_STRUCT_REGISTER  sizeof(STRUCT_REGISTER)
+#define LEN_STRUCT_LOGIN     sizeof(STRUCT_LOGIN)
+
 class CSocket;
 
 typedef struct listening_s  listening_t, *lp_listening_t;
@@ -77,16 +80,25 @@ public:
     // 连接信息相关
     int               fd;
     struct sockaddr   s_sockaddr;     // 这里用 sockaddr 类型
-    lp_event_handler  rhandler;       // 读操作时的函数句柄
+    lp_event_handler  rhandler;       // 可读时的函数句柄
+    lp_event_handler  whandler;       // 可写时的函数句柄
     uint64_t          s_cursequence;  // 序号，标记取用次数
     uint32_t          events;         // 记录 epoll 监听事件类型
 
     // 收取状态机相关
     u_char            s_curstat;      // 表示收包状态
     LPCOMM_PKG_HEADER s_headerinfo;   // 指向包头结构体，初始化时应当 nullptr
-    char*             s_msgmem;       // 指向为整个消息开辟的内存，待传入消息队列
+    char*             s_msgrecvmem;   // 指向为整个消息开辟的内存，待传入消息队列
     char*             s_precvbuf;     // 接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
-    unsigned int      s_recvlen;      // 要收到多少数据，由这个变量指定，和precvbuf配套使用，看具体应用的代码
+    size_t            s_recvlen;      // 要收到多少数据，由这个变量指定，和precvbuf配套使用，看具体应用的代码
+
+    // 发送消息相关
+    char*             s_msgsendmem;      // 保存获得的消息指向，用于释放
+    char*             s_sendbuf;         // 当前需要发送的消息指向
+    size_t            s_sendlen;         // 当前需要发送的消息长度
+    size_t            s_sendlen_suppose; // 连接对象应当发送的长度，各连接暂时都为相同值
+    size_t            s_sendlen_already; // 连接对象已发送长度  
+    int               s_continuesend;    // 标识是否是继续发送
 
     // 始终指向被监听对象 m_lplistenitem
     lp_listening_t    s_lplistening;  
