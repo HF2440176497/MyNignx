@@ -148,12 +148,7 @@ static int spawn_process(int port_num, int port_value, int process_num) {
 
 static void worker_process_cycle(int port_num, int port_value) {
     init_worker_process(port_num, port_value); 
-    for (;;) {
-        if (g_socket.epoll_process_events(port_num, port_value, -1) == -1) { 
-            log_error_core(LOG_ALERT, 0, "子进程退出：epoll_process_events 失败");
-            exit(-1); 
-        }
-    }
+    g_socket.epoll_process_events(port_num, port_value, -1);
     log_error_core(LOG_ALERT, 0, "子进程退出 准备回收");
     g_threadpoll.StopAll();
     g_socket.Shutdown_SubProc();

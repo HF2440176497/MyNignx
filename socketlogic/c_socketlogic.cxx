@@ -142,7 +142,9 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER l
     // （3）填充包体 内容随意不赋值
     LPSTRUCT_REGISTER send_info = (LPSTRUCT_REGISTER)(send_buf + MSG_HEADER_LEN + PKG_HEADER_LEN);
     p_pkgheader->crc32 = htonl(p_crc32->Get_CRC((u_char*)send_info, sendinfo_len));
-    MsgSendInQueue(send_buf);
+    
+    std::shared_ptr<char[]> send_ptr(send_buf);
+    MsgSendInQueue(send_ptr);
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return true;
 }

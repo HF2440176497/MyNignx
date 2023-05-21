@@ -80,12 +80,10 @@ ssize_t CSocket::recvproc(lp_connection_t lp_conn, char* buf, ssize_t recv_len) 
                 continue; 
             } else {
                 log_error_core(LOG_ALERT, errno , "读取出错, 连接: [%d] fd: [%d] 读取出错", lp_conn, fd);
-                close_accepted_connection(lp_conn);
                 return -1;
             }
         } else if (n == 0) {
             log_error_core(LOG_STDERR, 0 , "对端已关闭, 连接: [%d] fd: [%d]", lp_conn, fd);
-            close_accepted_connection(lp_conn);
             return -1;
         } else if (n < recv_len-total_len) {
             cur_buf += n;
@@ -95,7 +93,6 @@ ssize_t CSocket::recvproc(lp_connection_t lp_conn, char* buf, ssize_t recv_len) 
             return recv_len;
         }
     }
-    close_accepted_connection(lp_conn);
     return -1;  // 若意外情况退出 while 循环，返回 -1 表示异常
 }
 
@@ -149,16 +146,17 @@ void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
     size_t suppose_size;
     while (true) {
         if (lp_conn->s_curstat == _PKG_HD_INIT) {
-            char* header_mem = new char[PKG_HEADER_LEN](); 
+            char* header_mem = (char*)p_mem_manager->AllocMemory(PKG_HEADER_LEN, true);
             lp_conn->s_headerinfo = (LPCOMM_PKG_HEADER)header_mem;
 
-            lp_conn->s_precvbuf = header_mem;
+            lp_conn->s_precvbuf = header_mem;  // header_recv 将包头信息收取到 header_mem
             lp_conn->s_recvlen = PKG_HEADER_LEN;
 
             suppose_size = lp_conn->s_recvlen;
             int recv_size = pkg_header_recv(lp_conn);
             // log_error_core(LOG_STDERR, 0, "收到包头长度 [%d]", recv_size);
             if (recv_size == -1) { 
+                close_accepted_connection(lp_conn);
                 return;
             }
             if (recv_size == 0) {
@@ -178,6 +176,7 @@ void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
             int recv_size = pkg_header_recv(lp_conn);  // 继续读取包头
             // log_error_core(LOG_STDERR, 0, "收到包头长度 [%d]", recv_size);
             if (recv_size == -1) {
+                close_accepted_connection(lp_conn);
                 return;
             }
             if (recv_size == 0) {
@@ -198,6 +197,7 @@ void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
             int recv_size = pkg_body_recv(lp_conn);
             // log_error_core(LOG_STDERR, 0, "收到包体长度 [%d]", recv_size);
             if (recv_size == -1) {
+                close_accepted_connection(lp_conn);
                 return; 
             }
             if (recv_size == 0) {
@@ -217,6 +217,7 @@ void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
             int recv_size = pkg_body_recv(lp_conn);
             // log_error_core(LOG_STDERR, 0, "收到包体长度 [%d]", recv_size);
             if (recv_size == -1) {
+                close_accepted_connection(lp_conn);
                 return;
             }
             if (recv_size == 0) {
@@ -247,7 +248,9 @@ int CSocket::pkg_header_recv(lp_connection_t lp_curconn) {
         return -1;
     }
     ssize_t real_size = recvproc(lp_curconn, lp_curconn->s_precvbuf, lp_curconn->s_recvlen);
-    if (real_size == -1) { return -1; }  // 已打印日志
+    if (real_size == -1) { 
+        return -1;
+    }
     if (real_size < lp_curconn->s_recvlen) {  // 此次读取未读取到要求长度的数据，real_size 可能 == 0
         lp_curconn->s_precvbuf += real_size;
         lp_curconn->s_recvlen -= real_size;
@@ -260,35 +263,35 @@ int CSocket::pkg_header_recv(lp_connection_t lp_curconn) {
  * @brief 包头处理函数，构造消息头，分配总内存，负责状态转移，lp_curconn->s_precvbuf 定位到分配内存处，准备收包体
  * @return int 返回包头处理结果 -1：包头非法，需要释放已分配的内存，这时候我们未收取包体，未创建消息头，因此只释放 headerinfo
  */
-void CSocket::pkg_header_proc(lp_connection_t lp_curconn) {
+void CSocket::pkg_header_proc(lp_connection_t lp_conn) {
     // log_error_core(LOG_STDERR, 0, "进入包头处理函数"); 
-    size_t pkg_size = ntohs(lp_curconn->s_headerinfo->pkgLen);  // size_t 是 unsigned int 型，可用 uint16_t 代替
+    size_t pkg_size = ntohs(lp_conn->s_headerinfo->pkgLen);  // size_t 是 unsigned int 型，可用 uint16_t 代替
 
     // 根据包头内指定的包长度，判断包头是否合法
     if (pkg_size < PKG_HEADER_LEN || pkg_size > _PKG_MAX_LENGTH-1000) { 
         log_error_core(LOG_ALERT, 0, "包头不合法，重新回到 _PKG_HD_INIT"); 
-        lp_curconn->s_curstat = _PKG_HD_INIT;
+        lp_conn->s_curstat = _PKG_HD_INIT;
         return;                 
     }
     // 分配内存，作为 s_msgmem
     size_t msg_size = MSG_HEADER_LEN + pkg_size;
     size_t pkg_body_size = pkg_size - PKG_HEADER_LEN;
-    lp_curconn->s_msgrecvmem = new char[msg_size+1]();
+    lp_conn->s_msgstr = (char*)p_mem_manager->AllocMemory(msg_size + 1, true);
     
     // 构建并拷贝消息头
     STRUC_MSG_HEADER msg_header;
-    msg_header.lp_curconn = lp_curconn;
-    msg_header.msg_cursequence = lp_curconn->s_cursequence;
+    msg_header.lp_curconn = lp_conn;
+    msg_header.msg_cursequence = lp_conn->s_cursequence;
 
-    char* buf = (char*)memcpy(lp_curconn->s_msgrecvmem, &msg_header, MSG_HEADER_LEN) + MSG_HEADER_LEN;
-    lp_curconn->s_precvbuf = (char*)memcpy(buf, lp_curconn->s_headerinfo, PKG_HEADER_LEN) + PKG_HEADER_LEN;  // 定位到包体需要读取到的位置
-    lp_curconn->s_recvlen = pkg_body_size;
+    char* buf = (char*)memcpy(lp_conn->s_msgstr, &msg_header, MSG_HEADER_LEN) + MSG_HEADER_LEN;
+    lp_conn->s_precvbuf = (char*)memcpy(buf, lp_conn->s_headerinfo, PKG_HEADER_LEN) + PKG_HEADER_LEN;  // 定位到包体需要读取到的位置
+    lp_conn->s_recvlen = pkg_body_size;
 
     if (pkg_body_size == 0) {
-        pkg_body_proc(lp_curconn);
+        pkg_body_proc(lp_conn);
         return;
     }
-    lp_curconn->s_curstat = _PKG_BD_INIT;  // 开始收取包体
+    lp_conn->s_curstat = _PKG_BD_INIT;  // 开始收取包体
     return;
 }
 
@@ -296,11 +299,13 @@ void CSocket::pkg_header_proc(lp_connection_t lp_curconn) {
 int CSocket::pkg_body_recv(lp_connection_t lp_curconn) { 
     u_char curstat = lp_curconn->s_curstat;
     if (curstat != _PKG_BD_INIT && curstat != _PKG_BD_RECVING) {
+        p_mem_manager->FreeMemory(lp_curconn->s_msgstr);
         log_error_core(LOG_ALERT, 0 , "包体收取函数: 状态不符合调用要求");
         return -1;
     }
     ssize_t real_size = recvproc(lp_curconn, lp_curconn->s_precvbuf, lp_curconn->s_recvlen);
     if (real_size < 0) {
+        p_mem_manager->FreeMemory(lp_curconn->s_msgstr);  // pkg_header_proc 中分配了空间，若有包体会进一步收取，若收取出错我们在此释放
         return -1;
     }
     if (real_size < lp_curconn->s_recvlen) {  
@@ -317,10 +322,11 @@ int CSocket::pkg_body_recv(lp_connection_t lp_curconn) {
  */
 void CSocket::pkg_body_proc(lp_connection_t lp_conn) {
     log_error_core(LOG_INFO, 0, "包体收取结束，放入消息队列 连接：[%d]", lp_conn->fd);
-    g_threadpoll.InMsgRecv(lp_conn->s_msgrecvmem);  
-    lp_conn->s_msgrecvmem = nullptr;
-    p_mem_manager->FreeMemory(lp_conn->s_headerinfo);
-    lp_conn->PutToStateMach();
+    g_threadpoll.InMsgRecv(std::shared_ptr<char[]>(lp_conn->s_msgstr));
+    lp_conn->s_precvbuf = nullptr;  // s_msgstr 用于构造 shared_ptr 此后相关指针不能再使用
+    lp_conn->s_msgstr = nullptr;
+    p_mem_manager->FreeMemory(lp_conn->s_headerinfo);  // headerinfo 在状态机开始处分配，到状态机一轮结束后释放
+    lp_conn->PutToStateMach();  // 接下来继续收取消息
     return;
 }
 

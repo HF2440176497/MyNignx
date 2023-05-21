@@ -7,6 +7,7 @@
 #include <atomic>
 #include <list>
 #include <vector>
+#include <queue>
 #include <semaphore.h>
 #include "comm.h"
 
@@ -65,7 +66,7 @@ private:
     static void*    RecyConnThreadFunc(void* lp_item);                     // 延迟回收线程入口函数，静态函数
 
 public:
-    void            MsgSendInQueue(char* msg_tosend);
+    void            MsgSendInQueue(std::shared_ptr<char[]> msg_tosend);
     static void*    SendMsgThreadFunc(void* lp_item);                      // 发送消息线程入口函数，静态函数
 
 public:
@@ -92,8 +93,8 @@ private:
     struct epoll_event                m_events[MAX_EVENTS];     // epoll_wait 的返回参数
     lp_connection_t                   lp_standby_connitem;      // 待命连接，每个连接池只有一个
 
-    std::list<lp_connection_t>        m_connectionList;         // 全体连接
-    std::list<lp_connection_t>        m_free_connectionList;    // 空闲连接
+    std::queue<lp_connection_t>       m_connectionList;         // 全体连接
+    std::queue<lp_connection_t>       m_free_connectionList;    // 空闲连接
     std::atomic_int                   m_connection_count;       // 当前 worker process 中连接对象总数
     std::atomic_int                   m_free_connection_count;  // 当前 worker process 中空闲连接对象数
     lp_listening_t                    m_lplistenitem;
@@ -103,12 +104,11 @@ private:
     std::vector<CSocket::ThreadItem*> m_threadVector;           // CSocket 额外的辅助线程
     pthread_mutex_t                   m_recymutex;              // 保护延迟回收队列的互斥量
     std::atomic_int                   m_recy_connection_count;  // 延迟待回收的连接个数
-    
-    std::list<char*>                  m_send_msgList;           // 待发送的消息列表
-    pthread_mutex_t                   m_sendmutex;              // 保护 m_send_msgList 的互斥量
-    std::atomic_int                   m_msgtosend_count;        // 待发送的消息数
-    sem_t                             m_sendsem;                // sem_wait 用于发消息线程的运行函数
 
+    std::list<std::shared_ptr<char[]>> m_send_msgList;     // 待发送的消息列表
+    pthread_mutex_t                    m_sendmutex;        // 保护 m_send_msgList 的互斥量
+    std::atomic_int                    m_msgtosend_count;  // 待发送的消息数
+    sem_t                              m_sendsem;          // sem_wait 用于发消息线程的运行函数
 };
 
 #endif

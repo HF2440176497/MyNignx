@@ -19,7 +19,6 @@ listening_s::listening_s(int listenfd, int port_value): fd(listenfd), port(port_
  * @brief 创建待命连接时会传入参数
  */
 connection_s::connection_s(int fd): fd(fd) {
-    memset(&s_sockaddr, 0, ADDR_LEN);
     s_cursequence = 0;
     pthread_mutex_init(&s_connmutex, NULL);
 }
@@ -33,9 +32,6 @@ connection_s::~connection_s() {
  */
 void connection_s::PutToStateMach() {
     s_curstat = _PKG_HD_INIT;
-    s_msgrecvmem = nullptr;
-    s_headerinfo = nullptr;
-    s_precvbuf = nullptr;
     s_recvlen = PKG_HEADER_LEN;
     return;
 }
@@ -44,15 +40,15 @@ void connection_s::PutToStateMach() {
  * @brief 作为有效连接启用，接着进入状态机
  * 需要清空之前处理线程对连接的作用：
  */
-void connection_s::GetOneToUse(const int connfd, struct sockaddr* lp_connaddr) {
-    fd = connfd;
-    memcpy(&s_sockaddr, lp_connaddr, ADDR_LEN);
+void connection_s::GetOneToUse() {
     // 收取消息的相关成员
     s_cursequence++;
     PutToStateMach();
+
     // 回收队列
     s_inrecyList = 0;   // 不在回收队列内
     s_inrevy_time = 0;  // 此时不进行标记时间
+
     // 发送消息的相关成员
     s_continuesend = 0;
     return;
@@ -69,7 +65,15 @@ void connection_s::PutOneToFree() {
     if (s_inrecyList != 1) {
         log_error_core(LOG_ALERT, 0, "非法调用 PutOneToFree 此连接对象未进入回收队列");
     }
-    // p_mem_manager->FreeMemory(s_msgsendmem);  // 此时发送消息的线程可能未发送完整 存在重复释放 后期用智能指针
+    // 清空收取消息指针
+    s_msgstr = nullptr;
+    s_precvbuf = nullptr;
+
+    // 清空发送消息指针
+    s_sendbuf = nullptr;
+    s_msgsendmem = nullptr;
+
+    // 标记序号
     s_cursequence++;
     return;
 }
@@ -104,12 +108,12 @@ lp_connection_t CSocket::get_connection_item() {
     lp_connection_t lp_getconn;
     if (!m_free_connectionList.empty()) {
         lp_getconn = m_free_connectionList.front();
-        m_free_connectionList.pop_front();
+        m_free_connectionList.pop();
         m_free_connection_count--;
     } else {  // 空闲列表中已没有连接，需要创建更多连接
         log_error_core(LOG_INFO, 0, "空闲连接不足，创建一个额外连接对象 当前连接总数[%d]", m_connection_count+1);
-        lp_getconn = new connection_t();
-        m_connectionList.push_back(lp_getconn);
+        lp_getconn = new connection_t();  // 对于 shared_ptr push 进了 connectionList，引用计数++
+        m_connectionList.push(lp_getconn);
         m_connection_count++;  // 总连接数
     }
     lp_getconn->s_lplistening = m_lplistenitem;
@@ -123,7 +127,7 @@ lp_connection_t CSocket::get_connection_item() {
 void CSocket::free_connection_item(lp_connection_t lp_conn) {
     log_error_core(LOG_INFO, 0, "free_connection_item");
     CLock lock(&m_socketmutex);    
-    m_free_connectionList.push_back(lp_conn);
+    m_free_connectionList.push(lp_conn);
     m_free_connection_count++;
     return;
 }
