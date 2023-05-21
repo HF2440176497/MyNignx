@@ -15,17 +15,13 @@
 #include "c_lock.h"
 
 
-bool CThreadPool::m_shutdown = false;
-pthread_mutex_t CThreadPool::m_pthreadMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t CThreadPool::m_pthreadCond = PTHREAD_COND_INITIALIZER; 
-
-std::atomic_uint  CThreadPool::m_iRunningThread = 0;
-std::list<char*>  CThreadPool::m_msgqueue = {};
+std::atomic_int  CThreadPool::m_iRunningThread = 0;
+std::list<std::shared_ptr<char[]>>  CThreadPool::m_msgqueue = {};
 std::vector<CThreadPool::ThreadItem*> CThreadPool::m_threadvec = {}; 
 
-
-
 CThreadPool::CThreadPool() {
+    pthread_mutex_init(&m_pthreadMutex, NULL);
+    pthread_cond_init(&m_pthreadCond, NULL);
     m_iCreateThread = 10;  // 缺省值
 }
 
@@ -39,9 +35,9 @@ CThreadPool::~CThreadPool() {
         log_error_core(LOG_ALERT, 0, "线程关闭出错 可能已重复调用 at ~CThreadPool");
     }
     while (!m_msgqueue.empty()) {
-        char* msg_release = m_msgqueue.front();
+        auto msg_release = m_msgqueue.front();
         m_msgqueue.pop_front();
-        p_mem_manager->FreeMemory(msg_release);  // 未处理的消息直接回收
+        msg_release = nullptr;
     }
     for (auto item:m_threadvec) {
         delete item;  
@@ -83,7 +79,7 @@ WaitShutdown:
 
 
 /**
- * @brief 
+ * @brief CThreadPool 类的线程对象创建函数
  * @param func 线程执行的回调函数
  * @param lp_item 回调函数参数
  */
@@ -141,11 +137,11 @@ WaitRunning:
  * @return char* 消息指针
  * @todo queue 只是移除了了消息指针，对应内存还未释放，需要在处理函数完成后再释放
  */
-char* CThreadPool::get_msg_item() { 
+std::shared_ptr<char[]> CThreadPool::get_msg_item() { 
     if (m_msgqueue.empty()) {
         return nullptr;
     }
-    char* tmp = m_msgqueue.front();
+    std::shared_ptr<char[]> tmp = m_msgqueue.front();
     m_msgqueue.pop_front();
     return tmp;
 }
@@ -189,7 +185,7 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
                 lp_thread->running = true;
             }
             log_error_core(LOG_INFO, 0, "当前线程 [%d] 运行至 m_cond.wait，阻塞释放锁", tid);
-            pthread_cond_wait(&m_pthreadCond, &m_pthreadMutex);  // 没有消息，则解锁互斥量，并阻塞在此等待唤醒，唤醒时会重新加锁，但只有一个加锁成功。加锁成功的会循环判断判断         
+            pthread_cond_wait(&lp_this->m_pthreadCond, &lp_this->m_pthreadMutex);  // 没有消息，则解锁互斥量，并阻塞在此等待唤醒，唤醒时会重新加锁，但只有一个加锁成功。加锁成功的会循环判断判断         
             // log_error_core(LOG_STDERR, 0, "当前线程 [%d]  m_cond.wait 之后", tid);
         }
         // 此时有可能没有消息，先判断退出条件
@@ -202,8 +198,8 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
             break; 
         }
         // 说明是来消息引发的退出
-        lp_thread->msg = lp_this->get_msg_item();
-        if (lp_thread->msg == nullptr) {
+        lp_thread->msg_ptr = lp_this->get_msg_item();  // 此时 msg_ptr 用来管理分配的内存，释放时置空
+        if (lp_thread->msg_ptr == nullptr) {
             errnum = pthread_mutex_unlock(&lp_this->m_pthreadMutex); 
             if (errnum != 0) {
                 log_error_core(LOG_INFO, 0, "当前线程 [%d] 未获取消息，但解锁失败 at ThreadFunc", tid);
@@ -217,9 +213,11 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
             break;
         }
         // log_error_core(LOG_STDERR, 0, "线程拿到消息");
+        lp_thread->msg = lp_thread->msg_ptr.get();
         lp_this->m_iRunningThread.fetch_add(1, std::memory_order_seq_cst);
         g_socket.ThreadRecvProc(lp_thread->msg);  // 消息从队列中已拿走，此时并不需要互斥量
-        p_mem_manager->FreeMemory(lp_thread->msg);  // 指向的堆区空间也是 lp_curconn->s_msgmem 指向的堆区空间
+        lp_thread->msg = nullptr;
+        lp_thread->msg_ptr = nullptr;  // msg 使用完之后 msg_ptr 才能置空
         lp_this->m_iRunningThread.fetch_sub(1, std::memory_order_seq_cst);
     } // end while (1)
     log_error_core(LOG_ALERT, 0, "线程非人为因素退出");
@@ -231,12 +229,12 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
  * @brief 消息入队列，唤醒线程
  * 调用 Call 函数不必加锁
  */
-void CThreadPool::InMsgRecv(char* msg) {
+void CThreadPool::InMsgRecv(std::shared_ptr<char[]> msg) {
     int errnum = pthread_mutex_lock(&m_pthreadMutex);
     if (errnum != 0) {
         log_error_core(LOG_INFO, 0, "线程池尝试收取消息，加锁失败 at InMsgRecv");
     }
-    m_msgqueue.push_back(msg);  // 相当于是浅拷贝
+    m_msgqueue.push_back(msg);  // 相当于是浅拷贝 
     errnum = pthread_mutex_unlock(&m_pthreadMutex);
     if (errnum != 0) {
         log_error_core(LOG_INFO, 0, "线程池收取消息，解锁失败 at InMsgRecv");

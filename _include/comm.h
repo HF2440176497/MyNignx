@@ -5,6 +5,7 @@
 #include <sys/epoll.h> // epoll_event 等结构体
 #include <sys/socket.h>
 #include <cstdint>
+#include <memory>
 
 // 收包状态定义 对应 connection_t 中的 m_curstat
 // 这些宏与类声明 or 结构体关系紧密，放在一个文件中
@@ -71,7 +72,7 @@ struct connection_s {
 public:
     connection_s(int fd = -1);
     virtual ~connection_s();
-    void GetOneToUse(const int connfd, struct sockaddr* connaddr);
+    void GetOneToUse();
     void PutOneToFree();
     void PutToStateMach();
     bool JudgeOutdate(int sequence);  // 判断连接是否过期
@@ -86,19 +87,19 @@ public:
     uint32_t          events;         // 记录 epoll 监听事件类型
 
     // 收取状态机相关
-    u_char            s_curstat;      // 表示收包状态
-    LPCOMM_PKG_HEADER s_headerinfo;   // 指向包头结构体，初始化时应当 nullptr
-    char*             s_msgrecvmem;   // 指向为整个消息开辟的内存，待传入消息队列
-    char*             s_precvbuf;     // 接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
-    size_t            s_recvlen;      // 要收到多少数据，由这个变量指定，和precvbuf配套使用，看具体应用的代码
+    u_char                  s_curstat;     // 表示收包状态
+    LPCOMM_PKG_HEADER       s_headerinfo;  // 指向包头结构体，初始化时应当 nullptr
+    char*                   s_msgstr;      // 指向分配的内存，用于构造队列中的 shared_ptr
+    char*                   s_precvbuf;    // 接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
+    size_t                  s_recvlen;     // 要收到多少数据，由这个变量指定，和precvbuf配套使用，看具体应用的代码
 
     // 发送消息相关
-    char*             s_msgsendmem;      // 保存获得的消息指向，用于释放
-    char*             s_sendbuf;         // 当前需要发送的消息指向
-    size_t            s_sendlen;         // 当前需要发送的消息长度
-    size_t            s_sendlen_suppose; // 连接对象应当发送的长度，各连接暂时都为相同值
-    size_t            s_sendlen_already; // 连接对象已发送长度  
-    int               s_continuesend;    // 标识是否是继续发送
+    std::shared_ptr<char[]> s_msgsendmem;
+    char*                   s_sendbuf;          // 当前需要发送的消息指向
+    size_t                  s_sendlen;          // 当前需要发送的消息长度
+    size_t                  s_sendlen_suppose;  // 连接对象应当发送的长度，各连接暂时都为相同值
+    size_t                  s_sendlen_already;  // 连接对象已发送长度
+    int                     s_continuesend;     // 标识是否是继续发送
 
     // 始终指向被监听对象 m_lplistenitem
     lp_listening_t    s_lplistening;  

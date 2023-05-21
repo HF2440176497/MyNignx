@@ -27,7 +27,7 @@ char** g_init_argv = nullptr;// 指向原环境变量的所在处，用于放置
 char* g_p_argmem = nullptr;  // 指向开辟内存的首地址
 char* g_p_envmem = nullptr;  // 指向开辟内存的首地址，保存的环境变量的首地址
 
-int g_stopEvent;             // 标志当前进程退出
+int g_stopEvent;             // 标志当前进程退出 1 表进程退出
 
 pid_t master_pid;            // 作为守护进程的 master process
 pid_t cur_pid;               // 当前进程的pid

@@ -60,7 +60,9 @@ void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
             log_error_core(LOG_ALERT, 0, "CSocket::get_connection_item has failed at [%s]", "CSocket::event_accept_connection");
             exit(-1);
         }
-        lp_newconn->GetOneToUse(connfd, &conn_addr);
+        lp_newconn->GetOneToUse();
+        lp_newconn->fd = connfd;
+        memcpy(&lp_newconn->s_sockaddr, &conn_addr, ADDR_LEN);
         lp_newconn->rhandler = &CSocket::event_readable_request_handler;
         lp_newconn->whandler = &CSocket::event_writable_request_handler;
         if (epoll_oper_event(connfd, EPOLL_CTL_ADD, EPOLLET | EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, 0, lp_newconn) == -1) {
