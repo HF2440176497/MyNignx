@@ -16,7 +16,7 @@
 
 
 std::atomic_int  CThreadPool::m_iRunningThread = 0;
-std::list<std::shared_ptr<char[]>>  CThreadPool::m_msgqueue = {};
+std::list<std::shared_ptr<char>>  CThreadPool::m_msgqueue = {};
 std::vector<CThreadPool::ThreadItem*> CThreadPool::m_threadvec = {}; 
 
 CThreadPool::CThreadPool() {
@@ -137,11 +137,11 @@ WaitRunning:
  * @return char* 消息指针
  * @todo queue 只是移除了了消息指针，对应内存还未释放，需要在处理函数完成后再释放
  */
-std::shared_ptr<char[]> CThreadPool::get_msg_item() { 
+std::shared_ptr<char> CThreadPool::get_msg_item() { 
     if (m_msgqueue.empty()) {
         return nullptr;
     }
-    std::shared_ptr<char[]> tmp = m_msgqueue.front();
+    std::shared_ptr<char> tmp = m_msgqueue.front();
     m_msgqueue.pop_front();
     return tmp;
 }
@@ -213,9 +213,10 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
             break;
         }
         // log_error_core(LOG_STDERR, 0, "线程拿到消息");
-        lp_thread->msg = lp_thread->msg_ptr.get();
+        // lp_thread 构造时注意指针置空
+        lp_thread->msg = lp_thread->msg_ptr.get();  // 05.24 更新：这里不用变，因为取到的还是 shared_ptr
         lp_this->m_iRunningThread.fetch_add(1, std::memory_order_seq_cst);
-        g_socket.ThreadRecvProc(lp_thread->msg);  // 消息从队列中已拿走，此时并不需要互斥量
+        g_socket.ThreadRecvProc(lp_thread->msg);  // 线程以每一个消息为执行单位 线程完成待发送消息的入队 MsgSendInQueue
         lp_thread->msg = nullptr;
         lp_thread->msg_ptr = nullptr;  // msg 使用完之后 msg_ptr 才能置空
         lp_this->m_iRunningThread.fetch_sub(1, std::memory_order_seq_cst);
@@ -229,12 +230,12 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
  * @brief 消息入队列，唤醒线程
  * 调用 Call 函数不必加锁
  */
-void CThreadPool::InMsgRecv(std::shared_ptr<char[]> msg) {
+void CThreadPool::InMsgRecv(std::shared_ptr<char> msg) {
     int errnum = pthread_mutex_lock(&m_pthreadMutex);
     if (errnum != 0) {
         log_error_core(LOG_INFO, 0, "线程池尝试收取消息，加锁失败 at InMsgRecv");
     }
-    m_msgqueue.push_back(msg);  // 相当于是浅拷贝 
+    m_msgqueue.push_back(msg);  // 相当于是引用计数增加 
     errnum = pthread_mutex_unlock(&m_pthreadMutex);
     if (errnum != 0) {
         log_error_core(LOG_INFO, 0, "线程池收取消息，解锁失败 at InMsgRecv");

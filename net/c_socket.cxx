@@ -116,7 +116,7 @@ void CSocket::connectpool_clean() {
 
 
 void CSocket::sendmsglist_clean() {
-    std::shared_ptr<char[]> msg_toclean;
+    std::shared_ptr<char> msg_toclean;
     while (!m_send_msgList.empty()) {
         msg_toclean = m_send_msgList.front();
         m_send_msgList.pop_front();
@@ -248,7 +248,11 @@ void CSocket::InRecyConnQueue(lp_connection_t lp_conn) {
     return;
 }
 
-
+/**
+ * @brief 发送消息线程的入口函数
+ * @param lp_item 
+ * @return void* 
+ */
 void* CSocket::SendMsgThreadFunc(void* lp_item) {
     log_error_core(LOG_INFO, 0, "发送消息线程开始运行。。。");
     ThreadItem* lp_thread = static_cast<ThreadItem*>(lp_item);
@@ -295,19 +299,19 @@ void* CSocket::SendMsgThreadFunc(void* lp_item) {
                     ++it;
                     continue;
                 }
-                lp_conn->s_msgsendmem = *it;
+                lp_conn->p_msgsend = *it;
                 if (lp_conn->s_continuesend == 0) {  // 待发送的消息是完整的，可以从包头中获取 sendbuf sendlen 一开始会进入到此
                     lp_conn->s_sendlen_already = 0;
-                    lp_conn->s_sendbuf = msg_send + MSG_HEADER_LEN;
+                    lp_conn->p_sendbuf = msg_send + MSG_HEADER_LEN;
                     lp_conn->s_sendlen = ntohs(lp_pkghead_tosend->pkgLen);  // 发送的消息已设置为网络字节序，这里需要转换回来
                 }
                 suppose_size = lp_conn->s_sendlen;
-                int real_size = lp_socket->sendproc(lp_conn, lp_conn->s_sendbuf, lp_conn->s_sendlen);
+                int real_size = lp_socket->sendproc(lp_conn, lp_conn->p_sendbuf, lp_conn->s_sendlen);
                 if (real_size == -1) {  // 发送出错或对方关闭连接，移除此消息
                     msg_send = nullptr;
-                    lp_conn->s_sendbuf = nullptr;
+                    lp_conn->p_sendbuf = nullptr;
                     it = lp_socket->m_send_msgList.erase(it);
-                    lp_conn->s_msgsendmem = nullptr;
+                    lp_conn->p_msgsend = nullptr;
                     --lp_socket->m_msgtosend_count;
                     pthread_mutex_unlock(&lp_conn->s_connmutex);
                     continue;
@@ -316,7 +320,7 @@ void* CSocket::SendMsgThreadFunc(void* lp_item) {
                         lp_conn->s_continuesend = 1;
                     }
                     lp_conn->s_sendlen_already += real_size;
-                    lp_conn->s_sendbuf += real_size;
+                    lp_conn->p_sendbuf += real_size;
                     lp_conn->s_sendlen -= real_size;
                     log_error_core(LOG_INFO, 0, "未发送完，已发送长度: [%d] 添加监听: [%d]", lp_conn->s_sendlen_already, lp_conn->fd);
                     lp_socket->epoll_oper_event(lp_conn->fd, EPOLL_CTL_MOD, EPOLLOUT, 0, lp_conn);  // 增加 OUT 监听
@@ -335,9 +339,9 @@ void* CSocket::SendMsgThreadFunc(void* lp_item) {
                     }
                     log_error_core(LOG_INFO, 0, "发送完整，已发送长度: [%d] 连接 [%d]", lp_conn->s_sendlen_already, lp_conn->fd);
                     msg_send = nullptr;
-                    lp_conn->s_sendbuf = nullptr;
+                    lp_conn->p_sendbuf = nullptr;
                     it = lp_socket->m_send_msgList.erase(it);
-                    lp_conn->s_msgsendmem = nullptr;
+                    lp_conn->p_msgsend = nullptr;
                     --lp_socket->m_msgtosend_count;
                 }
                 pthread_mutex_unlock(&lp_conn->s_connmutex);  
@@ -359,7 +363,7 @@ void CSocket::connectpool_init() {
     // 6.3 改动：灵活创建连接池 连接池不包含 lp_standby_connitem
     lp_connection_t lp_conn_alloc;
     for (int i = 0; i < m_create_connections_count; i++) {
-        lp_conn_alloc = new connection_t();  // 对于有效连接，我们不传入参数，待 get_item 处理
+        lp_conn_alloc = new connection_t(-1);
         m_connectionList.push(lp_conn_alloc);
         m_free_connectionList.push(lp_conn_alloc);
     }
@@ -633,7 +637,7 @@ int CSocket::ThreadRecvProc(char *msg) {
  * @brief 处理收取消息的业务逻辑函数调用
  * @param msg_tosend 
  */
-void CSocket::MsgSendInQueue(std::shared_ptr<char[]> msg_tosend) {
+void CSocket::MsgSendInQueue(std::shared_ptr<char> msg_tosend) {
     int errnum = pthread_mutex_lock(&m_sendmutex);
     if (errnum != 0) {
         log_error_core(LOG_ERR, 0, "待发送消息入队列，加锁失败");

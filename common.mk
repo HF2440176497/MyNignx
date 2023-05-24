@@ -2,10 +2,10 @@
 #.PHONY:all clean 
 
 ifeq ($(DEBUG),true)
-CC = g++ -std=c++17 -g -D_GLIBCXX_USE_CXX11_ABI=0
+CC = g++ -std=c++20 -g -D_GLIBCXX_USE_CXX11_ABI=0
 VERSION = debug
 else
-CC = g++ -std=c++17 -D_GLIBCXX_USE_CXX11_ABI=0
+CC = g++ -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0
 VERSION = release
 endif
 
