@@ -11,7 +11,7 @@
 
 class CThreadPool;
 
-typedef void*(*lp_Func)(void*);  // 函数指针
+typedef void*(*lp_Func)(void*);
 
 // ThreadItem 定义在 ThreadPool 类内
 // private 类外是不可见的，但是类内可见
@@ -27,37 +27,35 @@ public:
     void Initialize_SubProc();
     void Create();
     bool StopAll();
-    void InMsgRecv(std::shared_ptr<char[]> msg);
+    void InMsgRecv(std::shared_ptr<char> msg);
     void Call();
 
 private:
     typedef struct ThreadItem {
         pthread_t               _handle;
         CThreadPool*            lp_pool;     // 线程对象可选择是否依附于线程池
-        std::shared_ptr<char[]> msg_ptr;     // 从 List 中取得的指针
+        std::shared_ptr<char>   msg_ptr;     // 从 List 中取得的指针
         char*                   msg;         // 线程处理的消息指针 由 msg_ptr 获得
         bool                    running;     // 线程是否正在运行
         bool                    ifshutdown;  // 线程是否要结束
         ThreadItem(CThreadPool* lp_this): lp_pool(lp_this) {
-            msg_ptr = nullptr;
-            msg = nullptr;
-            running = false;
+            msg_ptr    = nullptr;
+            msg        = nullptr;
+            running    = false;
             ifshutdown = false;
         };
         ~ThreadItem() {};
     }ThreadItem;
 
-
-    // ThreadFunc init_thread_item 更适合非静态函数
 private:
     static void*            ThreadFunc(void* lp_item);
     void                    init_thread_item(lp_Func func, ThreadItem* lp_item);
-    std::shared_ptr<char[]> get_msg_item();
+    std::shared_ptr<char>   get_msg_item();
     void                    TimingMonitor();
 
 public:
     int                                       m_iCreateThread;  // 创建的线程数
-    static std::list<std::shared_ptr<char[]>> m_msgqueue;       // 收取消息对列
+    static std::list<std::shared_ptr<char>>   m_msgqueue;       // 收取消息对列
 
 private:
     // 线程池维护线程队列，有关线程队列的相关量都可以是静态的

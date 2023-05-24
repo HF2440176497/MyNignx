@@ -70,7 +70,7 @@ public:
 // 连接对象
 struct connection_s {
 public:
-    connection_s(int fd = -1);
+    connection_s(int);
     virtual ~connection_s();
     void GetOneToUse();
     void PutOneToFree();
@@ -88,28 +88,28 @@ public:
 
     // 收取状态机相关
     u_char                  s_curstat;     // 表示收包状态
-    LPCOMM_PKG_HEADER       s_headerinfo;  // 指向包头结构体，初始化时应当 nullptr
-    char*                   s_msgstr;      // 指向分配的内存，用于构造队列中的 shared_ptr
-    char*                   s_precvbuf;    // 接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
+    LPCOMM_PKG_HEADER       p_headerinfo;  // 指向包头结构体，初始化时应当 nullptr
+    
+    std::shared_ptr<char>   p_msgrecv;     // 传入 的智能指针，指向分配的内存
+    char*                   p_msgstr;      // 指向分配的内存，用于构造队列中的 shared_ptr
+    char*                   p_recvbuf;    // 接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
     size_t                  s_recvlen;     // 要收到多少数据，由这个变量指定，和precvbuf配套使用，看具体应用的代码
 
-    // 发送消息相关
-    std::shared_ptr<char[]> s_msgsendmem;
-    char*                   s_sendbuf;          // 当前需要发送的消息指向
+    // 发送消息相关 
+    // 对于发送线程，待发送消息只被 m_send_msgList 的指针指向，且并不是开始时分配内存得到的指针
+    // 因此释放时根据发送线程的逻辑有序置空即可
+    std::shared_ptr<char>   p_msgsend;          // 从 m_send_msgList 取到的智能指针
+    char*                   p_sendbuf;          // 当前需要发送的消息指向
     size_t                  s_sendlen;          // 当前需要发送的消息长度
     size_t                  s_sendlen_suppose;  // 连接对象应当发送的长度，各连接暂时都为相同值
     size_t                  s_sendlen_already;  // 连接对象已发送长度
     int                     s_continuesend;     // 标识是否是继续发送
 
-    // 始终指向被监听对象 m_lplistenitem
-    lp_listening_t    s_lplistening;  
+    lp_listening_t          s_lplistening;      // 始终指向监听结构体 m_lplistenitem
+    pthread_mutex_t         s_connmutex;        // 连接对象互斥量
 
-    // 连接对象互斥量
-    pthread_mutex_t   s_connmutex;    // 构造函数中初始化
-
-    // 延迟回收
-    time_t            s_inrevy_time;  // 当前连接进入回收队列的时间
-    int               s_inrecyList;   // 表示是否已经在延迟回收队列中，0 表示不在，1 表示在
+    time_t                  s_inrevy_time;      // 当前连接进入延迟回收队列的时间
+    int                     s_inrecyList;       // 表示是否已经在延迟回收队列中，0 表示不在，1 表示在
 };
 
 #endif

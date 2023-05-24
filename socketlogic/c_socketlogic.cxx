@@ -128,8 +128,11 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER l
     CCRC32* p_crc32 = CCRC32::GetInstance();
     // int sendinfo_len = LEN_STRUCT_REGISTER;
     int sendinfo_len = 65000;
-    char* send_buf = (char*)p_mem_manager->AllocMemory(MSG_HEADER_LEN + PKG_HEADER_LEN + sendinfo_len, true);
-    
+
+    std::shared_ptr<char> send_ptr = std::shared_ptr<char>(new char[MSG_HEADER_LEN + PKG_HEADER_LEN + sendinfo_len](), 
+                                                    [](char* p) { delete[] p; });
+    char* send_buf = send_ptr.get();
+
     // （1）填充消息头
     memcpy(send_buf, lp_msgheader, MSG_HEADER_LEN);
 
@@ -143,8 +146,9 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER l
     LPSTRUCT_REGISTER send_info = (LPSTRUCT_REGISTER)(send_buf + MSG_HEADER_LEN + PKG_HEADER_LEN);
     p_pkgheader->crc32 = htonl(p_crc32->Get_CRC((u_char*)send_info, sendinfo_len));
     
-    std::shared_ptr<char[]> send_ptr(send_buf);
     MsgSendInQueue(send_ptr);
+    send_buf = nullptr;
+    send_ptr = nullptr;
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return true;
 }

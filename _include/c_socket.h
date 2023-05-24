@@ -66,7 +66,7 @@ private:
     static void*    RecyConnThreadFunc(void* lp_item);                     // 延迟回收线程入口函数，静态函数
 
 public:
-    void            MsgSendInQueue(std::shared_ptr<char[]> msg_tosend);
+    void            MsgSendInQueue(std::shared_ptr<char> msg_tosend);
     static void*    SendMsgThreadFunc(void* lp_item);                      // 发送消息线程入口函数，静态函数
 
 public:
@@ -105,7 +105,7 @@ private:
     pthread_mutex_t                   m_recymutex;              // 保护延迟回收队列的互斥量
     std::atomic_int                   m_recy_connection_count;  // 延迟待回收的连接个数
 
-    std::list<std::shared_ptr<char[]>> m_send_msgList;     // 待发送的消息列表
+    std::list<std::shared_ptr<char>>  m_send_msgList;     // 待发送的消息列表
     pthread_mutex_t                    m_sendmutex;        // 保护 m_send_msgList 的互斥量
     std::atomic_int                    m_msgtosend_count;  // 待发送的消息数
     sem_t                              m_sendsem;          // sem_wait 用于发消息线程的运行函数
