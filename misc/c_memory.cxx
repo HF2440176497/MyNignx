@@ -8,7 +8,7 @@
 /**
  * @brief 
  * @param memCount 
- * @param ifmemset true 表示要求内存清0
+ * @param ifmemset true 表示要求内存清 0
  * @return void* 
  */
 void *CMemory::AllocMemory(int memCount, bool ifmemset) {

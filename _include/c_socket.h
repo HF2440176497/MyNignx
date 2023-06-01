@@ -8,6 +8,7 @@
 #include <list>
 #include <vector>
 #include <queue>
+#include <map>
 #include <semaphore.h>
 #include "comm.h"
 
@@ -29,11 +30,12 @@ public:
 
     void            connectpool_clean();   // 连接池清理
     void            sendmsglist_clean();   // 发送队列清理
+    void            timermap_clean();
 
     int             epoll_oper_event(int fd, uint32_t flag, uint32_t event_type, int bcaction, lp_connection_t pconn);
     int             epoll_process_events(int port_num, int port_value, int timer);
     ssize_t         recvproc(lp_connection_t lp_curconn, char* buf, ssize_t buflen);
-    virtual int     ThreadRecvProc(char* msg);
+    virtual int     ThreadRecvProc(char* msg);                  // 子类重载函数，实现处理单个完整消息
 
     ssize_t         sendproc(lp_connection_t lp_conn, char* buf, ssize_t send_len);
 
@@ -45,7 +47,7 @@ private:
     void            event_open_listen(int port_num, int port_value);
     void            event_close_listen();
 
-    void            close_accepted_connection(lp_connection_t lp_conn); // 延迟回收连接
+    void            close_accepted_connection(lp_connection_t lp_conn, bool istimeout_close); // 延迟回收连接
     void            close_connection(lp_connection_t lp_conn);          // 立即回收连接
 
 
@@ -66,8 +68,15 @@ private:
     static void*    RecyConnThreadFunc(void* lp_item);                     // 延迟回收线程入口函数，静态函数
 
 public:
-    void            MsgSendInQueue(std::shared_ptr<char> msg_tosend);
-    static void*    SendMsgThreadFunc(void* lp_item);                      // 发送消息线程入口函数，静态函数
+    void                              MsgSendInQueue(std::shared_ptr<char> msg_tosend);
+    static void*                      SendMsgThreadFunc(void* lp_item);           // 发送消息线程入口函数，静态函数
+    void                              AddToTimerQueue(lp_connection_t lp_conn);   // 将新的有效连接
+    static void*                      ServerTimerQueueThreadFunc(void* lp_item);  // 监视 timermap 的线程
+    std::shared_ptr<STRUC_MSG_HEADER> GetOverTime(time_t cur_time);               // 返回 map 中开始的元素的包头指针，并更新此元素的时间重新插入
+    void                              TimeCheckingProc(LPSTRUC_MSG_HEADER, time_t cur_time);
+    void                              TimeOutProc(LPSTRUC_MSG_HEADER);
+    void                              DeleteFromTimerQueue(LPSTRUC_MSG_HEADER);   // 根据传入的消息头
+    std::shared_ptr<STRUC_MSG_HEADER> RemoveTimerFrist();
 
 public:
     int             m_port_count;                // 端口数量
@@ -105,10 +114,17 @@ private:
     pthread_mutex_t                   m_recymutex;              // 保护延迟回收队列的互斥量
     std::atomic_int                   m_recy_connection_count;  // 延迟待回收的连接个数
 
-    std::list<std::shared_ptr<char>>  m_send_msgList;     // 待发送的消息列表
+    std::list<std::shared_ptr<char>>   m_send_msgList;     // 待发送的消息列表
     pthread_mutex_t                    m_sendmutex;        // 保护 m_send_msgList 的互斥量
     std::atomic_int                    m_msgtosend_count;  // 待发送的消息数
     sem_t                              m_sendsem;          // sem_wait 用于发消息线程的运行函数
+
+    int                                                      m_waittime;    // 检查 map 中某元素的时间间隔
+    int                                                      m_TimeEnable;  // 表示是否开启心跳包机制 ReadConf 由配置决定，1 表示开启，并读取相关配置
+    std::multimap<time_t, std::shared_ptr<STRUC_MSG_HEADER>> m_timermap;    // 用于保存所有连接的检查时间
+    pthread_mutex_t                                          m_timer_mutex;
+    time_t                                                   m_timer_value;  // 计时队列的队首时间值
+    size_t                                                   m_timermap_size;
 };
 
 #endif

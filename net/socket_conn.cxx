@@ -39,7 +39,9 @@ connection_s::connection_s(int fd) : fd(fd) {
     s_sendlen_suppose = 0;
     s_sendlen         = 0;
 
-    s_inrecyList = 0;
+    s_inrecyList      = 0;
+    ping_update_time  = time(NULL);
+    istimeout         = false;
     pthread_mutex_init(&s_connmutex, NULL);
 }
 
@@ -102,6 +104,7 @@ void connection_s::PutOneToFree() {
     s_sendlen         = 0;
 
     s_inrecyList      = 0;
+    istimeout         = false;
     s_cursequence++;
 }
 
@@ -136,12 +139,12 @@ lp_connection_t CSocket::get_connection_item() {
     if (!m_free_connectionList.empty()) {
         lp_getconn = m_free_connectionList.front();
         m_free_connectionList.pop();
-        m_free_connection_count--;
+        --m_free_connection_count;
     } else {  // 空闲列表中已没有连接，需要创建更多连接
         log_error_core(LOG_INFO, 0, "空闲连接不足，创建一个额外连接对象 当前连接总数[%d]", m_connection_count+1);
         lp_getconn = new connection_t(-1);  // 对于 shared_ptr push 进了 connectionList，引用计数++
         m_connectionList.push(lp_getconn);
-        m_connection_count++;  // 总连接数
+        ++m_connection_count;  // 总连接数
     }
     lp_getconn->s_lplistening = m_lplistenitem;
     return lp_getconn;
@@ -155,7 +158,7 @@ void CSocket::free_connection_item(lp_connection_t lp_conn) {
     log_error_core(LOG_INFO, 0, "free_connection_item");
     CLock lock(&m_socketmutex);    
     m_free_connectionList.push(lp_conn);
-    m_free_connection_count++;
+    ++m_free_connection_count;
     return;
 }
 
@@ -178,15 +181,25 @@ void CSocket::close_connection(lp_connection_t lp_conn) {
 }
 
 /**
- * @brief 6.3 更新：延迟回收机制 以异步的方式交给线程去处理
- * 需要判断，lp_conn 是否已经在 InRecyQueue 中，是的话不需要再添加进去了
+ * @brief 延迟回收机制 以异步的方式交给线程去处理
+ * 需要判断，是否已经过超时踢出，若是则不再重复关闭
  * @param lp_curconn 此时传入的 lp_curconn != nullptr 调用之后 lp_curconn 重新回到初始化状态
  */
-void CSocket::close_accepted_connection(lp_connection_t lp_conn) {
+void CSocket::close_accepted_connection(lp_connection_t lp_conn, bool istimeout_close) {
     log_error_core(0, 0, "关闭了 connfd = [%d]，开始放入回收队列", lp_conn->fd);
     CLock lock(&lp_conn->s_connmutex);
     int fd_toclose = lp_conn->fd;
-    epoll_oper_event(fd_toclose, EPOLL_CTL_DEL, 0, 0, lp_conn);
+    if (fd_toclose == -1) {
+        log_error_core(LOG_EMERG, 0, "出现错误，连接对象的已进行关闭，close_connection 返回");
+        return;
+    }
+    if (istimeout_close == false) {
+        if (lp_conn->istimeout == true) {
+            log_error_core(LOG_EMERG, 0, "非超时踢出情况下调用，但连接对象已被超时踢出，close_connection 返回");
+            return;
+        }
+    }
+    epoll_oper_event(fd_toclose, EPOLL_CTL_DEL, 0, 0, lp_conn);  // 移除监听，避免 fd 冲突
     if (close(fd_toclose) == -1) {
         log_error_core(LOG_ALERT, errno, "Closeing fd of current conn_t has failed at [%s]", "CSocket::close_accepted_connection");
         exit(-1);

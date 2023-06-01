@@ -35,7 +35,6 @@ void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
         log_error_core(LOG_ALERT, 0, "当前 connection_t 非待命连接，无法建立三次握手 at [%s]", "event_accept_handler");
         exit(-1);
     }
-
     while (1) {
         connfd = accept(m_listenfd, &conn_addr, &addrlen);
         if (connfd == -1) {
@@ -61,6 +60,7 @@ void CSocket::event_accept_handler(lp_connection_t lp_standby_conn) {
             exit(-1);
         }
         lp_newconn->GetOneToUse();
+        AddToTimerQueue(lp_newconn);  // 05.29 新增
         lp_newconn->fd = connfd;
         memcpy(&lp_newconn->s_sockaddr, &conn_addr, ADDR_LEN);
         lp_newconn->rhandler = &CSocket::event_readable_request_handler;

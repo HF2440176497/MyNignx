@@ -21,7 +21,7 @@
 typedef bool (CSocketLogic::*handler)(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_msgheader, LPCOMM_PKG_HEADER lp_pkgheader, char* lp_body);
 
 static const handler status_handleset[] {
-    nullptr,
+    &CSocketLogic::_HandlePing,
     nullptr,
     nullptr,
     nullptr,
@@ -41,7 +41,7 @@ CSocketLogic::~CSocketLogic() {
 
 /**
  * @brief 线程处理单个消息的函数，线程入口函数调用
- * @param msg 消息头+包头+包体的完整消息 指向堆区空间
+ * @param msg 消息头+包头+包体的完整消息 指向堆区空间 调用者负责释放收取消息的对应内存
  * @return int -1 表示处理出错
  * @details ThreadRecvProc 出错返回时，线程应当处理下一条消息，对应连接不一定需要关闭，只有 JudgeOutdate 没通过，才需要连接关闭
  * 但是对于线程只要完成当前消息的处理，不负责连接的关闭
@@ -68,15 +68,13 @@ int CSocketLogic::ThreadRecvProc(char* msg) {
     }
     uint16_t imsgcode = ntohs(lp_pkgheader->msgCode);
 
-    // 包体不存在
-    if (body_len == 0) {
-        log_error_core(LOG_STDERR, 0, "包体不存在，处理函数直接返回");
+    // 包体不存在，检验 crc 值
+    if (body_len == 0) {   
         if (lp_pkgheader->crc32 != 0) {
             return -1;
         }
-        return 0;
     }
-    // 若存在包体，检验 crc 值
+    // 包体存在，检验 crc 值
     int calccrc = CCRC32::GetInstance()->Get_CRC((unsigned char *)lp_body, body_len); 
     if (calccrc != cur_crc) {
         log_error_core(0, 0, "CLogicSocket::threadRecvProcFunc()中CRC错误，丢弃数据!");
@@ -108,7 +106,7 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER l
     }
     pthread_t tid = pthread_self();
 
-    // 双重加锁机制：第一次判断避免了无谓的加锁；第二次判断是在加锁之后进行 避免了被打断
+    // 双重加锁机制：第一次判断避免了无谓的加锁；第二次判断是在加锁之后进行 避免了整个 handler 的逻辑被打断
     if (lp_conn->JudgeOutdate(lp_msgheader->msg_cursequence) == false) {
         log_error_core(LOG_STDERR, 0, "第一次判断 JudgeOutdate 返回，_HandleRegister 返回");
         return false;
@@ -155,7 +153,6 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER l
 
 
 bool CSocketLogic::_HandleLogin(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_msgheader, LPCOMM_PKG_HEADER lp_pkgheader, char* lp_body) {
-    
     if ((ntohs(lp_pkgheader->pkgLen) - PKG_HEADER_LEN) != LEN_STRUCT_LOGIN) {
         log_error_core(LOG_INFO, 0, "包体长度不合法 实际长度: [%d] 理论长度: [%d] _HandleLogin 返回", lp_pkgheader->pkgLen - PKG_HEADER_LEN, LEN_STRUCT_REGISTER);
         return false;
@@ -179,3 +176,33 @@ bool CSocketLogic::_HandleLogin(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_m
     return true;
 }
 
+/**
+ * @brief 对于心跳包，包头，没有包体
+ * 对于心跳包有没有必要加锁判断，认为没有必要
+ * 需要完成：包头指针传入到发送队列，更新连接对象的时间成员
+ */
+bool CSocketLogic::_HandlePing(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_msgheader, LPCOMM_PKG_HEADER lp_pkgheader, char* lp_body) {
+    pthread_t tid = pthread_self();
+    CLock lock(&lp_conn->s_connmutex);
+    log_error_core(LOG_INFO, 0, "线程 [%d] _HandlePing fd: [%d]", tid, lp_conn->fd);
+
+    lp_conn->ping_update_time = time(NULL);
+    std::shared_ptr<char> send_ptr = std::shared_ptr<char>(new char[MSG_HEADER_LEN + PKG_HEADER_LEN](), [](char* p) { delete[] p; });
+    char* send_buf = send_ptr.get();
+
+    // （1）填充消息头
+    memcpy(send_buf, lp_msgheader, MSG_HEADER_LEN);
+    // （2）填充包头
+    LPCOMM_PKG_HEADER p_pkgheader = (LPCOMM_PKG_HEADER)(send_buf + MSG_HEADER_LEN);
+    p_pkgheader->msgCode = htons(_CMD_PING);
+    p_pkgheader->pkgLen = htons(PKG_HEADER_LEN);
+    lp_conn->s_sendlen_suppose = PKG_HEADER_LEN;  // 应当发送的长度，发送线程中校验用
+
+    // （3）无包体，直接赋值 crc32
+    p_pkgheader->crc32 = htonl(0);
+
+    MsgSendInQueue(send_ptr);  // 填入发送队列，实际上发送的是包头，长度 8 个字节
+    send_buf = nullptr;
+    send_ptr = nullptr;
+    return true;
+}
