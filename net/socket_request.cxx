@@ -156,7 +156,7 @@ void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
             int recv_size = pkg_header_recv(lp_conn);
             // log_error_core(LOG_STDERR, 0, "收到包头长度 [%d]", recv_size);
             if (recv_size == -1) { 
-                close_accepted_connection(lp_conn);
+                close_accepted_connection(lp_conn, false);
                 return;
             }
             if (recv_size == 0) {
@@ -176,7 +176,7 @@ void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
             int recv_size = pkg_header_recv(lp_conn);  // 继续读取包头
             // log_error_core(LOG_STDERR, 0, "收到包头长度 [%d]", recv_size);
             if (recv_size == -1) {
-                close_accepted_connection(lp_conn);
+                close_accepted_connection(lp_conn, false);
                 return;
             }
             if (recv_size == 0) {
@@ -197,7 +197,7 @@ void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
             int recv_size = pkg_body_recv(lp_conn);
             // log_error_core(LOG_STDERR, 0, "收到包体长度 [%d]", recv_size);
             if (recv_size == -1) {
-                close_accepted_connection(lp_conn);
+                close_accepted_connection(lp_conn, false);
                 return; 
             }
             if (recv_size == 0) {
@@ -217,7 +217,7 @@ void CSocket::event_readable_request_handler(lp_connection_t lp_conn) {
             int recv_size = pkg_body_recv(lp_conn);
             // log_error_core(LOG_STDERR, 0, "收到包体长度 [%d]", recv_size);
             if (recv_size == -1) {
-                close_accepted_connection(lp_conn);
+                close_accepted_connection(lp_conn, false);
                 return;
             }
             if (recv_size == 0) {

@@ -110,6 +110,9 @@ public:
 
     time_t                  s_inrevy_time;      // 当前连接进入延迟回收队列的时间
     int                     s_inrecyList;       // 表示是否已经在延迟回收队列中，0 表示不在，1 表示在
+
+    time_t                  ping_update_time;   // 心跳包更新的时间
+    bool                    istimeout;          // 是否被超时踢出
 };
 
 #endif

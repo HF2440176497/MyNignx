@@ -58,6 +58,7 @@
         "cerrno": "cpp",
         "climits": "cpp",
         "ios": "cpp",
-        "stack": "cpp"
+        "stack": "cpp",
+        "map": "cpp"
     }
 }
