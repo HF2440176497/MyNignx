@@ -10,6 +10,7 @@
 #include "func.h"    // 各种函数声明
 #include "c_conf.h"  // 和配置文件处理相关的类
 #include "c_memory.h"
+#include "c_crc32.h"
 #include "c_threadpool.h"
 #include "c_socketlogic.h"
 
@@ -27,20 +28,26 @@ char** g_init_argv = nullptr;// 指向原环境变量的所在处，用于放置
 char* g_p_argmem = nullptr;  // 指向开辟内存的首地址
 char* g_p_envmem = nullptr;  // 指向开辟内存的首地址，保存的环境变量的首地址
 
+int g_daemonized = 0;        // 守护进程标记，标记是否启用了守护进程模式，0：未启用，1：启用了
 int g_stopEvent;             // 标志当前进程退出 1 表进程退出
 
 pid_t master_pid;            // 作为守护进程的 master process
 pid_t cur_pid;               // 当前进程的pid
 pid_t parent_pid;            // 父进程的pid
+int   process_form;          // 进程类别 master 或 worker
 
 CMemory* p_mem_manager = CMemory::GetInstance();  // 单例类管理堆区上分配的内存
-CThreadPool g_threadpoll;
+CThreadPool g_threadpool;
 CSocketLogic g_socket;
 
 
-int main(int argc, char *const *argv) {       
+int main(int argc, char *const *argv) {   
+    
     int exitcode = 0;           //退出代码，先给0表示正常退出
     int i;                      //临时用
+
+    // 标记程非退出
+    g_stopEvent = 0;
 
     // 和进程本身有关的全局变量量
     cur_pid    = getpid();      //取得进程pid
@@ -55,6 +62,7 @@ int main(int argc, char *const *argv) {
 
     g_argc = argc;        
     g_init_argv = (char **) argv; 
+    process_form = PROCESS_MASTER;
 
     CConfig *p_config = CConfig::GetInstance();
     if (p_config->Load("nginx.conf") == false) {        
@@ -63,16 +71,23 @@ int main(int argc, char *const *argv) {
         goto lblexit;
     }
 
+    // 初始化，不用返回
+    CMemory::GetInstance();
+    CCRC32::GetInstance();
+
     // (3)一些初始化函数，准备放这里    
     init_log();
     if (init_signals() != 0) {
         exitcode = 1;
         goto lblexit;
     }
-    
+    if (g_socket.Initialize() == false) {
+        exitcode = 1;
+        goto lblexit;
+    }
     init_setproctitle();    //把环境变量搬家
 
-    if (p_config->GetInt("Daemon", 1)) {
+    if (p_config->GetInt("Daemon", 1) == 1) {
         int dae = daemon_process();  // 三种情况：-1 1 0 s
         if (dae == -1) {
             exitcode = 1;
@@ -80,7 +95,9 @@ int main(int argc, char *const *argv) {
         } else if (dae == 1) {  // 要退出的父进程释放资源
             exitcode = 0;
             goto lblexit;
-        } else { }  
+        } else {
+            g_daemonized = 1;
+        } 
     }
     master_process_cycle();
             

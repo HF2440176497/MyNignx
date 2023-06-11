@@ -58,7 +58,7 @@ int init_signals() {
         }  // end if
 
         sigemptyset(&sa.sa_mask);
-        sigaddset(&sa.sa_mask, sig->signo);  // 自己实现的程序中，添加此信号的阻塞
+        // sigaddset(&sa.sa_mask, sig->signo);  // 自己实现的程序中，添加此信号的阻塞
 
         if (sigaction(sig->signo, &sa, nullptr) == -1) {
             log_error_core(LOG_EMERG, errno, "sigaction(%s) failed", sig->signame);  // 显示到日志文件中去的

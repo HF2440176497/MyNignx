@@ -24,18 +24,20 @@ extern char** g_init_argv;
 extern char*  g_p_argmem;
 extern char*  g_p_envmem; 
 
+extern int 		g_daemonized;
 extern int		g_stopEvent;
 
 extern pid_t 	master_pid;
 extern pid_t 	cur_pid;
 extern pid_t 	parent_pid;
+extern int      process_form;
 
 extern log_t 	log_s;  // 在 func_log.cxx 中定义的全局变量
 
-extern int g_worker_process_num;  // 子进程数量
+extern int 		g_worker_process_num;  // 子进程数量
 
 extern CMemory*     p_mem_manager;  // defined in nginx.cxx
 extern CSocketLogic g_socket;
-extern CThreadPool  g_threadpoll;
+extern CThreadPool  g_threadpool;
 
 #endif

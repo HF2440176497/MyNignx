@@ -34,6 +34,9 @@
 #define MAX_TITLE_LEN 50
 #define MASTER_PROCESS_TITLE        "master process"
 
+#define PROCESS_MASTER     0  //master进程，管理进程
+#define PROCESS_WORKER     1 
+
 // 监听端口相关
 #define DEFAULT_PORT 9000
 
@@ -42,5 +45,6 @@
 // 消息头与包结构相关 结构体在 comm.h 中定义
 #define PKG_HEADER_LEN              sizeof(COMM_PKG_HEADER)
 #define MSG_HEADER_LEN              sizeof(STRUC_MSG_HEADER)
+
 
 #endif

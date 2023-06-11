@@ -36,14 +36,14 @@ void CSocket::AddToTimerQueue(lp_connection_t lp_conn) {
     // 构造消息头
     LPSTRUC_MSG_HEADER p_mhead = (LPSTRUC_MSG_HEADER)(p_mem_manager->AllocMemory(MSG_HEADER_LEN, true));
     p_mhead->lp_curconn = lp_conn;
-    p_mhead->msg_cursequence = lp_conn->s_cursequence;
+    p_mhead->msg_cursequence = lp_conn->sequence;
 
     // 插入到计时队列
     m_timermap.insert(std::make_pair(cur_time + m_waittime, std::shared_ptr<STRUC_MSG_HEADER>(p_mhead)));
     p_mhead = nullptr;
     m_timer_value = m_timermap.begin()->first;
     ++m_timermap_size;  // 互斥量保护
-    log_error_core(LOG_INFO, 0, "连接 [%d] 加入到计时队列，目前计时队列大小 [%d]", m_timermap.size());
+    // log_error_core(LOG_INFO, 0, "连接 [%d] 加入到计时队列，目前计时队列大小 [%d]", m_timermap.size());
     return;
 }
 
@@ -66,13 +66,15 @@ void CSocket::timermap_clean() {
 void* CSocket::ServerTimerQueueThreadFunc(void* lp_item) {
     log_error_core(LOG_INFO, 0, "监视线程开始运行。。。");
     ThreadItem* lp_thread = static_cast<ThreadItem*>(lp_item);
-    lp_thread->running = true;
     CSocket* lp_socket = lp_thread->lp_socket;
 
     while (g_stopEvent == 0 && lp_thread->ifshutdown == false) {
         if (lp_socket->m_TimeEnable == 0) {
             log_error_core(LOG_INFO, 0, "未开启定时监视功能，线程退出");
             break;
+        }
+        if (lp_thread->running == false) {
+            lp_thread->running = true;
         }
         time_t cur_time = time(NULL);
         time_t maptime  = lp_socket->m_timer_value;
@@ -150,15 +152,13 @@ void CSocket::TimeCheckingProc(LPSTRUC_MSG_HEADER p_mhead_inlist, time_t cur_tim
     if (lp_conn->JudgeOutdate(p_mhead_inlist->msg_cursequence) == false) {
         pthread_mutex_unlock(&lp_conn->s_connmutex);
         DeleteFromTimerQueue(p_mhead_inlist);  
-        log_error_core(LOG_ERR, 0, "JudgeOutdate 返回，TimeCheckingProc 返回");
         return;
     }
     int fd_toclose = lp_conn->fd;
-    // log_error_core(LOG_INFO, 0, "连接 [%d] 距离上次心跳包时间长度 [%d]", fd_toclose, (cur_time - lp_conn->ping_update_time));
     if ((cur_time - lp_conn->ping_update_time) > (3 * m_waittime)) {
         lp_conn->istimeout = true;  // 标记进行了超时踢出
         pthread_mutex_unlock(&lp_conn->s_connmutex);
-        log_error_core(LOG_INFO, 0, "连接 [%d] 已经过时间 [%d] 未及时发送心跳包，关闭并延迟回收", fd_toclose, (cur_time - lp_conn->ping_update_time));
+        // log_error_core(LOG_INFO, 0, "连接 [%d] 已经过时间 [%d] 未及时发送心跳包，关闭并延迟回收", fd_toclose, (cur_time - lp_conn->ping_update_time));
         TimeOutProc(p_mhead_inlist); 
     } else { 
         pthread_mutex_unlock(&lp_conn->s_connmutex);
@@ -195,7 +195,6 @@ void CSocket::DeleteFromTimerQueue(LPSTRUC_MSG_HEADER lp_mhead) {
         if (ptmp->lp_curconn == lp_mhead->lp_curconn && ptmp->msg_cursequence == lp_mhead->msg_cursequence) {
             it = m_timermap.erase(it);
             --m_timermap_size;
-            log_error_core(LOG_INFO, 0, "计时队列删除一项 目前含有数目 [%d]", m_timermap_size);
         } 
         else { ++it; }
     }

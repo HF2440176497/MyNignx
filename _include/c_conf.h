@@ -18,7 +18,7 @@ class CConfig {
 private:
     CConfig();
     CConfig(const CConfig& CConfig);
-    CConfig& operator = (const CConfig& CConfig);
+    CConfig& operator=(const CConfig& CConfig);
     ~CConfig();
 
 public:
@@ -43,11 +43,10 @@ private:
     static CConfig* m_instance;  // m_ 表示成员变量
 
 public:
-    bool Load(const char* pfile);
-    int GetInt(const char* itemname, const int def);
+    bool        Load(const char* pfile);
+    int         GetInt(const char* itemname, const int def);
     const char* GetString(const char* itemname);
-    void ReadConf_Thread();
-    void Test();
+    void        Test();
 
 public:
     std::vector<LPConfItem> m_itemlist;
