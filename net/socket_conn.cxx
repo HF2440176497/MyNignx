@@ -11,37 +11,21 @@
 #include "func.h"
 #include "c_lock.h"
 
+listening_s::listening_s() {
+    fd         = -1;
+    port       = 0;
+    p_connitem = nullptr;
+}
+
 listening_s::listening_s(int listenfd, int port_value): fd(listenfd), port(port_value){
-    s_lpconnection = nullptr;
+    p_connitem = nullptr;
 }
 
 /**
  * @brief 待命连接 fd = listenfd，有效连接 fd = -1 后赋值 connfd
  */
 connection_s::connection_s(int fd) : fd(fd) {
-    s_cursequence     = 0;
-    rhandler          = nullptr;
-    whandler          = nullptr;
-    events            = 0;
-
-    p_headerinfo      = nullptr;  
-    p_msgrecv         = nullptr;
-    p_recvbuf         = nullptr;
-    p_msgstr          = nullptr;
-    s_curstat         = _PKG_HD_INIT;
-    s_recvlen         = PKG_HEADER_LEN;
-
-    p_msgsend         = nullptr;
-    p_sendbuf         = nullptr;
-
-    s_continuesend    = 0;
-    s_sendlen_already = 0;
-    s_sendlen_suppose = 0;
-    s_sendlen         = 0;
-
-    s_inrecyList      = 0;
-    ping_update_time  = time(NULL);
-    istimeout         = false;
+    sequence = 0;
     pthread_mutex_init(&s_connmutex, NULL);
 }
 
@@ -52,12 +36,11 @@ connection_s::connection_s(int fd) : fd(fd) {
 connection_s::~connection_s() {
     // 收取消息
     p_recvbuf = nullptr;
-    p_msgstr  = nullptr;
+    recv_str  = nullptr;
     p_msgrecv = nullptr;
 
     // 发送消息
     p_sendbuf = nullptr;
-    p_msgsend = nullptr;
     pthread_mutex_destroy(&s_connmutex);
 }
 
@@ -66,18 +49,38 @@ connection_s::~connection_s() {
  */
 void connection_s::PutToStateMach() {
     p_headerinfo      = nullptr;  
-    p_msgrecv         = nullptr;
     p_recvbuf         = nullptr;
-    p_msgstr          = nullptr;
-    s_curstat         = _PKG_HD_INIT;
     s_recvlen         = PKG_HEADER_LEN;
+    recv_str          = nullptr;
+    p_msgrecv         = nullptr;
+    s_curstat         = _PKG_HD_INIT;
+    s_recvlen_already = 0;
 }
 
 /**
- * @brief 作为有效连接启用，有效连接来自 m_free_connectionList 或者新构造的 conn_t
+ * @brief 作为有效连接启用，有效连接来自 空闲连接列表 或者新构造的 conn_t
  */
 void connection_s::GetOneToUse() {  
-    s_cursequence++;
+    ++sequence;
+    fd                = -1;
+    rhandler          = nullptr;
+    whandler          = nullptr;
+    events            = 0;
+
+    iThrowsendCount   = 0;
+    send_str          = nullptr;
+    p_sendbuf         = nullptr;
+    p_msgsend         = nullptr;
+    s_sendlen_already = 0;
+    s_sendlen_suppose = 0;
+    s_sendlen         = 0;
+    isend_count       = 0;
+
+    ping_update_time  = time(NULL);
+
+    s_inrecyList      = 0;
+    istimeout         = false;
+
     PutToStateMach();
 }
 
@@ -86,42 +89,36 @@ void connection_s::GetOneToUse() {
  * 这里可以额外进行判断 conn_t.fd 和 s_inrecyList
  */
 void connection_s::PutOneToFree() {
+    ++sequence;
     fd                = -1;
     rhandler          = nullptr;
     whandler          = nullptr;
     events            = 0;
 
     p_recvbuf         = nullptr;
-    p_msgstr          = nullptr;
+    recv_str          = nullptr;
     p_msgrecv         = nullptr;
 
-    p_msgsend         = nullptr;
     p_sendbuf         = nullptr;
+    send_str          = nullptr;
+    p_msgsend         = nullptr;
 
-    s_continuesend    = 0;
+    iThrowsendCount   = 0;
     s_sendlen_already = 0;
     s_sendlen_suppose = 0;
     s_sendlen         = 0;
 
+    ping_update_time  = time(NULL);
+
     s_inrecyList      = 0;
     istimeout         = false;
-    s_cursequence++;
 }
 
 /**
  * @brief 判断连接对象是否过期失效
  */
 bool connection_s::JudgeOutdate(int sequence) {
-    if (fd <= 0) {
-        log_error_core(LOG_STDERR, 0, "线程当前处理连接对象失效");
-        return false;
-    }
-    if (s_inrecyList == 1) {
-        log_error_core(LOG_ALERT, 0, "线程当前处理连接对象已进入回收队列，不再处理");
-        return false;
-    }
-    if (s_cursequence != sequence) {
-        log_error_core(LOG_STDERR, 0, "线程当前处理连接可能已回收");
+    if (fd <= 0 || s_inrecyList == 1 || sequence != sequence) {
         return false;
     }
     return true;
@@ -129,24 +126,21 @@ bool connection_s::JudgeOutdate(int sequence) {
 
 
 /**
- * @brief 获取有效连接时调用此函数 配合 GetOneToUse
- * m_lplistenitem 已在创建线程池中设置
- * @return lp_connection_t 
+ * @brief 获取有效连接时调用此函数
+ * @return lp_connection_t 返回有效连接
  */
 lp_connection_t CSocket::get_connection_item() {
     CLock lock(&m_socketmutex);
-    lp_connection_t lp_getconn;
+    lp_connection_t lp_getconn = nullptr;
     if (!m_free_connectionList.empty()) {
         lp_getconn = m_free_connectionList.front();
         m_free_connectionList.pop();
         --m_free_connection_count;
     } else {  // 空闲列表中已没有连接，需要创建更多连接
-        log_error_core(LOG_INFO, 0, "空闲连接不足，创建一个额外连接对象 当前连接总数[%d]", m_connection_count+1);
         lp_getconn = new connection_t(-1);  // 对于 shared_ptr push 进了 connectionList，引用计数++
         m_connectionList.push(lp_getconn);
-        ++m_connection_count;  // 总连接数
+        ++m_total_connection_count;  // 总连接数
     }
-    lp_getconn->s_lplistening = m_lplistenitem;
     return lp_getconn;
 }
 
@@ -155,7 +149,7 @@ lp_connection_t CSocket::get_connection_item() {
  * @brief 连接回到空闲连接池以备，关闭连接时调用
  */
 void CSocket::free_connection_item(lp_connection_t lp_conn) {
-    log_error_core(LOG_INFO, 0, "free_connection_item");
+    // log_error_core(LOG_INFO, 0, "free_connection_item");
     CLock lock(&m_socketmutex);    
     m_free_connectionList.push(lp_conn);
     ++m_free_connection_count;
@@ -164,18 +158,22 @@ void CSocket::free_connection_item(lp_connection_t lp_conn) {
 
 /**
  * @brief 此时的连接对象不在监听树上，在树上意味着随时可能来数据
- * 因此是添加到监听树时或之前出错，则调用此函数
+ * 因此是添加到监听树时或之前出错，则调用此函数，此时也应当检查 fd_close 和 istimeout
  * @param lp_conn 
  */
 void CSocket::close_connection(lp_connection_t lp_conn) {
     CLock lock(&lp_conn->s_connmutex);
     int fd_close = lp_conn->fd;
+    if (fd_close == -1 || lp_conn->istimeout == true) {  // 此种情况理论上不应该出现
+        log_error_core(LOG_ALERT, 0, "close_connection has failed");
+        exit(-1);
+    }
     if (close(fd_close) == -1) {
-        log_error_core(LOG_ALERT, errno, "Closeing fd of current conn_t has failed at [%s]", "CSocket::close_connection");
+        log_error_core(LOG_ALERT, errno, "Closeing fd failed at CSocket::close_connection");
         exit(-1);
     }
     lp_conn->fd = -1;
-    lp_conn->s_cursequence++;
+    ++lp_conn->sequence;
     free_connection_item(lp_conn);
     return;
 }
@@ -190,7 +188,7 @@ void CSocket::close_accepted_connection(lp_connection_t lp_conn, bool istimeout_
     CLock lock(&lp_conn->s_connmutex);
     int fd_toclose = lp_conn->fd;
     if (fd_toclose == -1) {
-        log_error_core(LOG_EMERG, 0, "出现错误，连接对象的已进行关闭，close_connection 返回");
+        log_error_core(LOG_EMERG, 0, "连接对象的已进行关闭，close_connection 返回");
         return;
     }
     if (istimeout_close == false) {
@@ -205,6 +203,10 @@ void CSocket::close_accepted_connection(lp_connection_t lp_conn, bool istimeout_
         exit(-1);
     }
     lp_conn->fd = -1;
+    if (lp_conn->iThrowsendCount > 0) {
+        --lp_conn->iThrowsendCount;
+    }
+    --m_online_count;
     InRecyConnQueue(lp_conn);
     return;
 }

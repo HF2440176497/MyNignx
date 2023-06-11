@@ -1,6 +1,6 @@
-﻿//和处理系统配置文件相关的放这里
+﻿// 处理系统配置文件相关
 
-//系统头文件放上边
+// 系统头文件在前
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,7 +19,7 @@ CConfig::CConfig() {}
 
 CConfig::~CConfig() {
     for (auto item = m_itemlist.begin(); item != m_itemlist.end(); item++) 
-        delete *item;
+        delete *item;  // 迭代器解引用，才是 LPConfItem
     m_itemlist.clear();
 }
 /**

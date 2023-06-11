@@ -21,7 +21,8 @@ public:
 
 public:
     CSocketLogic(/* args */);
-    ~CSocketLogic();
+    virtual ~CSocketLogic();
+    virtual bool Initialize();
 };
 
 

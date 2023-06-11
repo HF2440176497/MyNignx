@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <cstdint>
 #include <memory>
+#include <atomic>
 
 // 收包状态定义 对应 connection_t 中的 m_curstat
 // 这些宏与类声明 or 结构体关系紧密，放在一个文件中
@@ -19,6 +20,7 @@
 
 #define LEN_STRUCT_REGISTER  sizeof(STRUCT_REGISTER)
 #define LEN_STRUCT_LOGIN     sizeof(STRUCT_LOGIN)
+#define LEN_STRUCT_PING      0
 
 class CSocket;
 
@@ -59,12 +61,13 @@ typedef struct _STRUCT_LOGIN {
 
 struct listening_s {
 public:
+    listening_s();
     listening_s(int listenfd, int port_value);
 
 public:
     int             fd;
     int             port;
-    lp_connection_t s_lpconnection;  // 指向待命连接
+    lp_connection_t p_connitem;  // 指向待命连接
 };
 
 // 连接对象
@@ -83,29 +86,32 @@ public:
     struct sockaddr   s_sockaddr;     // 这里用 sockaddr 类型
     lp_event_handler  rhandler;       // 可读时的函数句柄
     lp_event_handler  whandler;       // 可写时的函数句柄
-    uint64_t          s_cursequence;  // 序号，标记取用次数
+    uint64_t          sequence;  // 序号，标记取用次数
     uint32_t          events;         // 记录 epoll 监听事件类型
 
     // 收取状态机相关
     u_char                  s_curstat;     // 表示收包状态
     LPCOMM_PKG_HEADER       p_headerinfo;  // 指向包头结构体，初始化时应当 nullptr
-    
-    std::shared_ptr<char>   p_msgrecv;     // 传入 的智能指针，指向分配的内存
-    char*                   p_msgstr;      // 指向分配的内存，用于构造队列中的 shared_ptr
-    char*                   p_recvbuf;    // 接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
-    size_t                  s_recvlen;     // 要收到多少数据，由这个变量指定，和precvbuf配套使用，看具体应用的代码
 
+    std::shared_ptr<char> p_msgrecv;          // 传入 的智能指针，指向分配的内存
+    char*                 recv_str;           // 指向分配的内存，用于构造队列中的 shared_ptr
+    char*                 p_recvbuf;          // 接收数据的缓冲区的头指针，对收到不全的包非常有用，看具体应用的代码
+    size_t                s_recvlen;          // 要收到多少数据，由这个变量指定，和precvbuf配套使用，看具体应用的代码
+    size_t                s_recvlen_already;  // 每次发完一个包，用于最后校验收到每个包的长度
     // 发送消息相关 
     // 对于发送线程，待发送消息只被 m_send_msgList 的指针指向，且并不是开始时分配内存得到的指针
     // 因此释放时根据发送线程的逻辑有序置空即可
-    std::shared_ptr<char>   p_msgsend;          // 从 m_send_msgList 取到的智能指针
+    std::shared_ptr<char>   p_msgsend;          // 从发送队列中获得
+    char*                   send_str;           // 指向分配的内存 由 p_msgsend 获得
+    
+    std::atomic_int         iThrowsendCount;    // 标记发送缓冲区满，则需要通过epoll事件来驱动消息的继续发送
     char*                   p_sendbuf;          // 当前需要发送的消息指向
     size_t                  s_sendlen;          // 当前需要发送的消息长度
     size_t                  s_sendlen_suppose;  // 连接对象应当发送的长度，各连接暂时都为相同值
     size_t                  s_sendlen_already;  // 连接对象已发送长度
-    int                     s_continuesend;     // 标识是否是继续发送
+    std::atomic_int         isend_count;        // 连接对象对应的发送数目
 
-    lp_listening_t          s_lplistening;      // 始终指向监听结构体 m_lplistenitem
+    lp_listening_t          p_listenitem;      // 始终指向监听结构体 m_lplistenitem
     pthread_mutex_t         s_connmutex;        // 连接对象互斥量
 
     time_t                  s_inrevy_time;      // 当前连接进入延迟回收队列的时间

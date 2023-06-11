@@ -13,20 +13,19 @@ void init_setproctitle() {
     g_p_envmem = new char[g_environlen]; 
     memset(g_p_envmem,0,g_environlen);  //内存要清空防止出现问题
 
-    char *p_envtmp = g_p_envmem;
-    //把原来的内存内容搬到新地方来
+    char *p_envtmp = g_p_envmem;        // 把原环境变量内容拷贝到新地方 p_envtmp
     for (int i = 0; environ[i]; i++) {
-        size_t size = strlen(environ[i])+1 ; //不要拉下+1，否则内存全乱套了，因为strlen是不包括字符串末尾的\0的
-        strncpy(p_envtmp, environ[i], size);      //把原环境变量内容拷贝到新地方【新内存】
-        environ[i] = p_envtmp;            // 重定向
+        size_t size = strlen(environ[i])+1 ; // 不要拉下+1，否则内存全乱套了，因为strlen是不包括字符串末尾的\0的
+        strncpy(p_envtmp, environ[i], size);     
+        environ[i] = p_envtmp;               // 重定向
         p_envtmp += size;
     }
 
-    g_p_argmem = new char[g_arglen];  // 搬家到此处
+    g_p_argmem = new char[g_arglen];  // 同理，将 搬家到此处
     memset(g_p_argmem, 0, g_arglen);
     char* p_argtmp = g_p_argmem;
 
-    g_argv = new char*[g_argc];
+    g_argv = new char*[g_argc];  // 保存地址，因此 g_argv[i] 是各个参数地址
 
     for (int i = 0; g_init_argv[i]; i++) {
         size_t size = strlen(g_init_argv[i])+1;

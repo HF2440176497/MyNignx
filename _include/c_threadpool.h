@@ -54,16 +54,17 @@ private:
     void                    TimingMonitor();
 
 public:
-    int                                       m_iCreateThread;  // 创建的线程数
-    static std::list<std::shared_ptr<char>>   m_msgqueue;       // 收取消息对列
+    int                                     m_iCreateThread;   // 创建的线程数
+    static std::list<std::shared_ptr<char>> m_msgqueue;        // 收取消息对列
+    size_t                                  m_msgqueue_size;   // 收消息队列的大小
+    std::atomic_int                         m_iRunningThread;  // 线程运行数
 
 private:
     // 线程池维护线程队列，有关线程队列的相关量都可以是静态的
     bool                            m_shutdown;        // 标记整个线程池是否要关闭 与类关联 因此是 static 的
     pthread_mutex_t                 m_pthreadMutex;    // 线程同步互斥量/也叫线程同步锁
     pthread_cond_t                  m_pthreadCond;     // 线程同步条件变量
-    static std::atomic_int          m_iRunningThread;  // 线程运行数
-    static std::vector<ThreadItem*> m_threadvec;
+    static std::vector<ThreadItem*> m_threadvec;       // 保存线程池各线程对象
 };
 
 #endif
