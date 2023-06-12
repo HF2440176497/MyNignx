@@ -18,8 +18,7 @@
 /**
  * @brief 作为待命连接的 rhandler 完成三次握手
  * 调用时机：epoll_wait 监听到 EPOOLIN 时，需要作为 rhandler 完成三次握手
- * @param lp_standby_conn 待命连接指针
- * @details 循环 accept
+ * @param lp_standby_conn 待命连接
 */
 void CSocket::event_accept_handler(lp_connection_t p_conn) {
     struct sockaddr conn_addr;
@@ -46,7 +45,6 @@ void CSocket::event_accept_handler(lp_connection_t p_conn) {
             log_error_core(LOG_ALERT , errno, "event_accept_connection: accept failed");
             return;  // 其他错误，说明已经没有来握手的客户端了或者出错，直接返回
         }
-
         // 检测当前在线用户数
         if (m_online_count >= m_worker_connections) {
             log_error_core(LOG_ERR, 0, "超出系统允许的最大连入用户数[最大允许连入数%d]",m_worker_connections);  
@@ -61,7 +59,7 @@ void CSocket::event_accept_handler(lp_connection_t p_conn) {
             }
         }
         // 走到这里说明 connfd > 0 需要：设置非阻塞，调用 epoll_add_event
-        log_error_core(LOG_ALERT, 0, "三次握手建立连接 connfd = [%d]", connfd);
+        // log_error_core(LOG_ALERT, 0, "三次握手建立连接 connfd = [%d]", connfd);
         lp_newconn = get_connection_item();
         if (lp_newconn == nullptr) {
             close(connfd);

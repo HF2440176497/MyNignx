@@ -116,7 +116,7 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER l
     if (lp_conn->JudgeOutdate(lp_msgheader->msg_cursequence) == false) {
         return false;
     } else {
-        CLock lock(&lp_conn->s_connmutex);
+        CLock lock(&lp_conn->conn_mutex);
     }
     if (lp_conn->JudgeOutdate(lp_msgheader->msg_cursequence) == false) {
         return false;
@@ -140,7 +140,7 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER l
     LPCOMM_PKG_HEADER p_pkgheader = (LPCOMM_PKG_HEADER)(send_buf + MSG_HEADER_LEN);
     p_pkgheader->msgCode = htons(_CMD_REGISTER);
     p_pkgheader->pkgLen = htons(PKG_HEADER_LEN + sendinfo_len);
-    lp_conn->s_sendlen_suppose = PKG_HEADER_LEN + sendinfo_len;  // 应当发送的长度，发送线程中校验用
+    lp_conn->sendlen_suppose = PKG_HEADER_LEN + sendinfo_len;  // 应当发送的长度，发送线程中校验用
 
     // （3）填充包体 内容随意不赋值
     LPSTRUCT_REGISTER send_info = (LPSTRUCT_REGISTER)(send_buf + MSG_HEADER_LEN + PKG_HEADER_LEN);
@@ -149,7 +149,6 @@ bool CSocketLogic::_HandleRegister(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER l
     MsgSendInQueue(send_ptr);
     send_buf = nullptr;
     send_ptr = nullptr;
-    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return true;
 }
 
@@ -163,15 +162,11 @@ bool CSocketLogic::_HandleLogin(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_m
     if (lp_conn->JudgeOutdate(lp_msgheader->msg_cursequence) == false) {
         return false;
     } else {
-        CLock lock(&lp_conn->s_connmutex);
+        CLock lock(&lp_conn->conn_mutex);
     }
     if (lp_conn->JudgeOutdate(lp_msgheader->msg_cursequence) == false) {
         return false;
     }
-    // LPSTRUCT_LOGIN lp_struct = (LPSTRUCT_LOGIN)(lp_body);
-    // log_error_core(LOG_INFO, 0, "线程 [%d] _HandleLogin fd: [%d], username: [%s], password: [%s]", 
-    //  tid, lp_conn->fd, lp_struct->username, lp_struct->password);
-
     CCRC32* p_crc32 = CCRC32::GetInstance();
     int sendinfo_len = LEN_STRUCT_LOGIN;
 
@@ -186,7 +181,7 @@ bool CSocketLogic::_HandleLogin(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_m
     LPCOMM_PKG_HEADER p_pkgheader = (LPCOMM_PKG_HEADER)(send_buf + MSG_HEADER_LEN);
     p_pkgheader->msgCode = htons(_CMD_LOGIN);
     p_pkgheader->pkgLen = htons(PKG_HEADER_LEN + sendinfo_len);
-    lp_conn->s_sendlen_suppose = PKG_HEADER_LEN + sendinfo_len;  // 应当发送的长度，发送线程中校验用
+    lp_conn->sendlen_suppose = PKG_HEADER_LEN + sendinfo_len;  // 应当发送的长度，发送线程中校验用
 
     // （3）填充包体 内容随意不赋值
     LPSTRUCT_LOGIN send_info = (LPSTRUCT_LOGIN)(send_buf + MSG_HEADER_LEN + PKG_HEADER_LEN);  // 指向包体
@@ -196,7 +191,6 @@ bool CSocketLogic::_HandleLogin(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_m
     send_buf = nullptr;
     send_ptr = nullptr;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return true;
 }
 
@@ -212,7 +206,7 @@ bool CSocketLogic::_HandlePing(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_ms
     }
     
     pthread_t tid = pthread_self();
-    CLock lock(&lp_conn->s_connmutex);
+    CLock lock(&lp_conn->conn_mutex);
     // log_error_core(LOG_INFO, 0, "线程 [%d] _HandlePing fd: [%d]", tid, lp_conn->fd);
 
     lp_conn->ping_update_time = time(NULL);
@@ -225,7 +219,7 @@ bool CSocketLogic::_HandlePing(lp_connection_t lp_conn, LPSTRUC_MSG_HEADER lp_ms
     LPCOMM_PKG_HEADER p_pkgheader = (LPCOMM_PKG_HEADER)(send_buf + MSG_HEADER_LEN);
     p_pkgheader->msgCode = htons(_CMD_PING);
     p_pkgheader->pkgLen = htons(PKG_HEADER_LEN);
-    lp_conn->s_sendlen_suppose = PKG_HEADER_LEN;  // 应当发送的长度，发送线程中校验用
+    lp_conn->sendlen_suppose = PKG_HEADER_LEN;  // 应当发送的长度，发送线程中校验用
 
     // （3）无包体，直接赋值 crc32
     p_pkgheader->crc32 = htonl(0);

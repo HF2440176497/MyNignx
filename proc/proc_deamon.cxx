@@ -56,6 +56,11 @@ int daemon_process() {
         log_error_core(LOG_EMERG, errno, "Failed to create daemon process at [%s]", "redirect STDOUT");
         return -1;
     }
-
+    if (fd > STDERR_FILENO) {
+        if (close(fd) == -1) {
+            log_error_core(LOG_EMERG,errno, "daemon()中close(fd)失败!");
+            return -1;
+        }
+    }
     return 0;  // 表示成功
 }
