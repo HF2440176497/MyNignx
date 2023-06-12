@@ -83,29 +83,6 @@ void master_process_cycle() {
 // 根据给定的参数创建指定数量的子进程，因为以后可能要扩展功能，增加参数，所以单独写成一个函数
 // process_count 要创建的子进程数量，作为全局变量而非成员变量
 static void start_worker_process(int process_count) {
-    // char str[20];
-    // memset(str, 0 , strlen(str));
-    // int port_count = g_socket.m_port_count;
-
-    // for (int port_num = 0; port_num < port_count; port_num++) {
-    //     // 在此处 直接读取端口号，传入 spawn，进而用于创建 socket
-
-    //     CConfig *p_config = CConfig::GetInstance();
-    //     sprintf(str, "ListenPort%d", port_num);
-    //     int port_value = p_config->GetInt(str, DEFAULT_PORT + port_num);  // 默认的端口设置为 9000+
-
-    //     // 线程的编号，即 process_num
-    //     for (int process_num = 0; process_num < process_count; process_num++) {
-    //         if (spawn_process(port_num, port_value, process_num) == -1) { 
-    //             exit(-1); 
-    //         } else {  // 父进程与有可能退出的子进程 父进程需要继续循环，产生子进程；子进程此时可以返回到 master_process_cycle 然后继续判断
-    //             if (cur_pid == master_pid) { continue; } 
-    //             else { return; }
-    //         }
-    //     }
-    // }
-    // return;
-
     // matser proc 进行 for 循环，最后只有 master proc return
     for (int process_num = 0; process_num < process_count; process_num++) {
         spawn_process(process_num, "worker process");
@@ -142,17 +119,15 @@ static int spawn_process(int proc_num, const char* proc_name) {
 
 
 static void worker_process_cycle(int proc_num, const char* proc_name) {
-    process_form = PROCESS_WORKER;
-
-    init_worker_process(proc_num);
-    setproctitle(proc_name);
     log_error_core(LOG_INFO, 0, "[%d] worker proc 启动并开始运行", proc_num);
-
+    process_form = PROCESS_WORKER;
+    init_worker_process(proc_num);
+    setproctitle(proc_name); 
     for (;;) {
         g_socket.epoll_process_events(-1); // -1 表示一直阻塞等待
 
         // 统计信息打印，考虑到测试的时候总会收到各种数据信息，所以上边的函数调用一般都不会卡住等待收数据
-        // g_socket.printTDInfo();
+        g_socket.PrintInfo();
     }
     g_threadpool.StopAll();
     g_socket.Shutdown_SubProc();
@@ -160,15 +135,6 @@ static void worker_process_cycle(int proc_num, const char* proc_name) {
     return;
 }
 
-// static void worker_process_cycle(int port_num, int port_value) {
-//     init_worker_process(port_num, port_value); 
-//     g_socket.epoll_process_events(port_num, port_value, -1);  // worker 在这里面循环
-//     log_error_core(LOG_ALERT, 0, "子进程退出 准备回收");
-//     g_threadpool.StopAll();
-//     g_socket.Shutdown_SubProc();
-//     log_error_core(0, 0, "子进程退出：worker_process_cycle 结束");
-//     return;
-// }
 
 // 描述：子进程创建时调用本函数进行一些初始化工作
 static void init_worker_process(int proc_num) {

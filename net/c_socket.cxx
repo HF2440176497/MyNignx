@@ -310,7 +310,7 @@ void* CSocket::RecyConnThreadFunc(void* lp_item) {
                 for (std::list<lp_connection_t>::iterator it = begin; it != end;) {
                     cur_time = time(NULL);
                     lp_connection_t lp_conn = *it;
-                    if ((lp_socket->m_delay_time + lp_conn->s_inrevy_time) < cur_time && g_stopEvent == 0) {  // 说明此时满足时间要求
+                    if ((lp_socket->m_delay_time + lp_conn->inrevy_time) < cur_time && g_stopEvent == 0) {  // 说明此时满足时间要求
                         // log_error_core(LOG_INFO, 0, "RecyConnThreadFunc 执行，地址：[%d] 连接对象被归还", lp_conn);
                         it = m_recy_connectionList.erase(it);
                         --lp_socket->m_recy_connection_count;
@@ -328,7 +328,7 @@ void* CSocket::RecyConnThreadFunc(void* lp_item) {
                 break;  // break while (1)
             }            
         }  // end if (m_recy_connection_count > 0)
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        // std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }  // end while(1) 回到 while(1)
     log_error_core(LOG_INFO, 0, "RecyConnThreadFunc 线程结束");
     lp_thread->running = false;
@@ -341,7 +341,7 @@ void* CSocket::RecyConnThreadFunc(void* lp_item) {
  * @param lp_conn 此时仍然有 conn_mutex 保护 lp_conn
  */
 void CSocket::InRecyConnQueue(lp_connection_t lp_conn) {
-    if (lp_conn->s_inrecyList == 1) {
+    if (lp_conn->inrecyList == 1) {
         return;
     }
     bool iffind = false;
@@ -355,8 +355,8 @@ void CSocket::InRecyConnQueue(lp_connection_t lp_conn) {
     if (iffind == true) {
         return;
     }
-    lp_conn->s_inrecyList  = 1;  // 标记进入回收队列
-    lp_conn->s_inrevy_time = time(NULL);
+    lp_conn->inrecyList  = 1;  // 标记进入回收队列
+    lp_conn->inrevy_time = time(NULL);
     ++m_recy_connection_count;
     m_recy_connectionList.push_back(lp_conn);
     return;
@@ -402,17 +402,11 @@ void* CSocket::SendMsgThreadFunc(void* lp_item) {
                     LPCOMM_PKG_HEADER lp_pkghead_tosend = (LPCOMM_PKG_HEADER)(msg_send + MSG_HEADER_LEN);
                     lp_connection_t lp_conn = lp_msghead_tosend->lp_curconn;
                     msg_send = nullptr;
-                    // errnum = pthread_mutex_lock(&lp_conn->s_connmutex);
-                    // if (errnum != 0) {
-                    //     log_error_core(LOG_ERR, 0, "SendMsgThreadFunc 连接对象加锁失败");
-                    //     ++it;
-                    //     continue;
-                    // }
+
                     if (lp_conn->JudgeOutdate(lp_msghead_tosend->msg_cursequence) == false) {    
                         lp_conn->send_str = nullptr;
                         lp_conn->p_sendbuf = nullptr;
                         lp_conn->p_msgsend = nullptr;
-                        // pthread_mutex_unlock(&lp_conn->s_connmutex);
                         log_error_core(LOG_INFO, 0, "SendMsgThreadFunc 连接失效");
                         it = lp_socket->m_send_msgList.erase(it);
                         continue;
@@ -427,42 +421,40 @@ void* CSocket::SendMsgThreadFunc(void* lp_item) {
                     --lp_conn->isend_count;
                     --lp_socket->m_msgtosend_count;
         
-                    lp_conn->s_sendlen_already = 0;
+                    lp_conn->sendlen_already = 0;
                     lp_conn->p_sendbuf = lp_conn->send_str + MSG_HEADER_LEN;
-                    lp_conn->s_sendlen = ntohs(lp_pkghead_tosend->pkgLen);  // 发送的消息已设置为网络字节序，这里需要转换回来
+                    lp_conn->sendlen = ntohs(lp_pkghead_tosend->pkgLen);  // 发送的消息已设置为网络字节序，这里需要转换回来
                 
-                    suppose_size = lp_conn->s_sendlen;
-                    int real_size = lp_socket->sendproc(lp_conn, lp_conn->p_sendbuf, lp_conn->s_sendlen);
-                    if (real_size == -1) {  // 发送出错或对方关闭连接，移除此消息
+                    suppose_size = lp_conn->sendlen;
+                    int real_size = lp_socket->sendproc(lp_conn, lp_conn->p_sendbuf, lp_conn->sendlen);
+                    if (real_size == -1) {  // 发送出错，移除此消息
                         lp_conn->send_str = nullptr;
                         lp_conn->p_sendbuf = nullptr;
                         lp_conn->p_msgsend = nullptr;
                         lp_conn->iThrowsendCount = 0;
-                        // pthread_mutex_unlock(&lp_conn->s_connmutex);
                         continue;
                     } else if (real_size < suppose_size) {  // 实际长度小于期望发送长度 或者缓冲区已满 real_size == 0
                         ++lp_conn->iThrowsendCount;
                         lp_conn->p_sendbuf += real_size;
-                        lp_conn->s_sendlen -= real_size;
-                        lp_conn->s_sendlen_already += real_size;
+                        lp_conn->sendlen -= real_size;
+                        lp_conn->sendlen_already += real_size;
                         lp_socket->epoll_oper_event(lp_conn->fd, EPOLL_CTL_MOD, EPOLLOUT, 0, lp_conn);  // 增加 EPOLLOUT 监听
                         // 当前连接的发送未发送完，遍历到同连接的新消息，到此连接时 s_continuesend == 1，sendbuf 仍指向先前消息
                         // 直到发送完原消息，更新对应连接 sendbuf，不会导致一个连接的发送被拆分
 
                     } else {
                         // 06.04 更新：这里的判断是合理的，走到这里的肯定是发送线程全权负责的发送
-                        lp_conn->s_sendlen_already += real_size;
-                        if (lp_conn->s_sendlen_already != lp_conn->s_sendlen_suppose) {  // 额外检验是否和一开始要发送的长度相等
-                            log_error_core(LOG_ALERT, 0, "发送长度不符 already: [%d] suppose: [%d]", lp_conn->s_sendlen_already, lp_conn->s_sendlen_suppose);
+                        lp_conn->sendlen_already += real_size;
+                        if (lp_conn->sendlen_already != lp_conn->sendlen_suppose) {  // 额外检验是否和一开始要发送的长度相等
+                            log_error_core(LOG_ALERT, 0, "发送长度不符 already: [%d] suppose: [%d]", lp_conn->sendlen_already, lp_conn->sendlen_suppose);
                             return (void*)(0);
                         }
-                        log_error_core(LOG_INFO, 0, "发送成功，已发送长度 [%d]", lp_conn->s_sendlen_already);
+                        // log_error_core(LOG_INFO, 0, "发送成功，已发送长度 [%d]", lp_conn->sendlen_already);
                         lp_conn->send_str = nullptr;
                         lp_conn->p_sendbuf = nullptr;
                         lp_conn->p_msgsend = nullptr;
                         lp_conn->iThrowsendCount = 0;  // 标记不需要 epoll 驱动机制
                     }
-                    // pthread_mutex_unlock(&lp_conn->s_connmutex);  // else if 和 else 情况在此最后解锁
                 } // end for
             }  // end if(!empty())
             pthread_mutex_unlock(&lp_socket->m_sendmutex);        
@@ -474,12 +466,10 @@ void* CSocket::SendMsgThreadFunc(void* lp_item) {
 
 
 /**
- * @brief 初始化连接池，每个进程都会有各自的连接池
- * 6.3：此函数不放在 Initialize_SubProc() 因为此函数需要 event_init 的 m_lplistenitem
+ * @brief 初始化连接池
  * @details 分配连接对象的内存时，6.3 改为每次分配一个对象的空间
  */
 void CSocket::connectpool_init() {
-    // 灵活创建连接池 连接池不包含 lp_standby_connitem
     lp_connection_t lp_conn_alloc;
     for (int i = 0; i < m_create_connections_count; i++) {
         lp_conn_alloc = new connection_t(-1);
@@ -517,21 +507,6 @@ void CSocket::epoll_event_init() {
     }
     return;
 }
-
-
-/**
- * @brief 此时连接池，监听对象结构体已经创建出来，我们需要（1）创建 epfd （2）创建 m_listenfd 对应的待命连接（3）加入监听
-*/
-// void CSocket::epoll_init() {
-//     m_epfd = epoll_create(m_create_connections_count);
-//     if (m_epfd == -1) {
-//         log_error_core(LOG_ALERT, errno, "epoll_create failed");
-//         exit(-1);
-//     }
-//     epoll_oper_event(m_listenfd, EPOLL_CTL_ADD, EPOLLET | EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR, 0, lp_standby_connitem);  // 待命连接
-//     return;
-// }
-
 
 /**
  * @brief 参考《高性能编程》设置的是文件描述符的非阻塞属性，这会影响之后 recv 和 send 的行为
@@ -602,7 +577,6 @@ int CSocket::epoll_oper_event(int fd, uint32_t flag, uint32_t event_type, int bc
  * @return int 
  */
 int CSocket::epoll_process_events(int timer) {
-    // log_error_core(0, 0, "开始等待 epoll_wait 响应");
     int events_num = epoll_wait(m_epfd, m_events, MAX_EVENTS, timer);
     if (events_num == -1) {
         if (errno == EINTR) {
@@ -620,7 +594,6 @@ int CSocket::epoll_process_events(int timer) {
         log_error_core(LOG_ALERT, 0, "epoll_wait wait indefinitely, but no event is returned at [%s]", "CSocekt::ngx_epoll_process_events");
         return -1;
     }
-    // log_error_core(0, 0, "epoll_wait 有响应事件，数量 events = [%d]", events_num);
     lp_connection_t p_conn;  // lp_curconn 有可能是待命连接，也可能是有效连接
     u_int32_t events;  
 
@@ -641,28 +614,18 @@ int CSocket::epoll_process_events(int timer) {
         //     continue;
         // }
         // else {
-        //     pthread_mutex_lock(&lp_curconn->s_connmutex);
+        //     pthread_mutex_lock(&lp_curconn->conn_mutex);
         // }
         // if (lp_curconn->JudgeOutdate(cur_sequence) == false) {
         //     log_error_core(LOG_INFO, 0, "epoll_process_events JudgeOutdate");
-        //     pthread_mutex_unlock(&lp_curconn->s_connmutex);
+        //     pthread_mutex_unlock(&lp_curconn->conn_mutex);
         //     continue;
         // }
-        // pthread_mutex_unlock(&lp_curconn->s_connmutex);
+        // pthread_mutex_unlock(&lp_curconn->conn_mutex);
         // 开始事件对应类型的处理
         events = m_events[i].events;  
-        // if (events & (EPOLLERR | EPOLLHUP)) {  // 出错，个人理解应当是关闭连接 但我们仿照参考代码处理
-        //     log_error_core(LOG_INFO, 0 , "EPOLLERR | EPOLLHUP");
-        //     close_accepted_connection(lp_curconn, false);
-        //     continue;
-        // }
+
         if (events & EPOLLIN) {  // 包含对端关闭的处理
-            // if (events & EPOLLRDHUP) {
-            //     log_error_core(LOG_INFO, 0 , "EPOLLIN EPOLLRDHUP");
-            //     close_accepted_connection(lp_curconn, false);
-            //     continue;                    
-            // }
-            // log_error_core(LOG_INFO, 0 , "处理可读事件");
             (this->*(p_conn->rhandler))(p_conn);
         }
         if (events & EPOLLOUT) {  // 发送缓冲区
@@ -698,7 +661,12 @@ void CSocket::MsgSendInQueue(std::shared_ptr<char> msg_tosend) {
 
     LPSTRUC_MSG_HEADER pMsgHeader = (LPSTRUC_MSG_HEADER)(msg_tosend.get());
 	lp_connection_t p_conn = pMsgHeader->lp_curconn;
-    if (p_conn->isend_count > 200) {
+    
+    if (m_msgtosend_count > 1000) {
+        log_error_core(LOG_INFO, 0, "发送队列消息积压太多，丢弃消息", p_conn->fd);
+        return;
+    }
+    if (p_conn->isend_count > 400) {
         log_error_core(LOG_INFO, 0, "连接[%d]对应的消息积压太多，丢弃消息", p_conn->fd);
         return;
     }
@@ -709,8 +677,6 @@ void CSocket::MsgSendInQueue(std::shared_ptr<char> msg_tosend) {
     }
     ++p_conn->isend_count;
     ++m_msgtosend_count;
-    int count = m_msgtosend_count;
-    log_error_core(LOG_INFO, 0, "MsgSendInQueue: 当前发送队列消息数 [%d]", count);
     
     if (sem_post(&m_sendsem) == -1) {
         log_error_core(LOG_ALERT, errno, "MsgSendInQueue 信号量设置出错");
@@ -726,14 +692,16 @@ void CSocket::PrintInfo() {
     time_t currtime = time(NULL);
     if ((currtime - m_lastprinttime) > 10) {
         m_lastprinttime = currtime;
+        int online_count = m_online_count;
         int send_count = m_msgtosend_count;
         int runningthread = g_threadpool.m_iRunningThread;
         log_error_core(LOG_INFO, 0, "------------------------------------ begin ------------------------------------");
         log_error_core(LOG_INFO, 0, "连接池中空闲连接/总连接/要释放的连接 [%d] / [%d] / [%d]", 
                                     m_free_connectionList.size(), m_connectionList.size(), m_recy_connection_count);
+        log_error_core(LOG_INFO, 0, "当前在线用户数 [%d] / 最大允许在线数 [%d]", online_count, m_worker_connections);
         log_error_core(LOG_INFO, 0, "线程池运行线程 [%d]", runningthread);
-        log_error_core(LOG_INFO, 0, "收消息队列大小 [%d]", g_threadpool.m_msgqueue_size);
-        log_error_core(LOG_INFO, 0, "发消息队列大小 [%d]", send_count);
+        log_error_core(LOG_INFO, 0, "收取消息队列大小 [%d]", g_threadpool.m_msgqueue_size);
+        log_error_core(LOG_INFO, 0, "发送消息队列大小 [%d]", send_count);
         if (m_TimeEnable == 1) {
             log_error_core(LOG_INFO, 0, "已开启心跳包机制，计时队列大小 [%d]", m_timermap_size);
         }
