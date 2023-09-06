@@ -285,11 +285,9 @@ void* CSocket::RecyConnThreadFunc(void* lp_item) {
             }
             if (g_stopEvent == 1 || lp_thread->ifshutdown == true) {  // 进程退出或是回收线程需要退出
                 while (!m_recy_connectionList.empty()) {
-                    auto begin = m_recy_connectionList.begin();
-                    auto end = m_recy_connectionList.end();
-                    for (std::list<lp_connection_t>::iterator it = begin; it != end;) {
+                    for (auto it = m_recy_connectionList.begin(); it != m_recy_connectionList.end();) {
                         lp_connection_t lp_conn = *it;
-                        it = m_recy_connectionList.erase(it);
+                        it = m_recy_connectionList.erase(it);  // list 作为链表，erase 之后其余迭代器应当
                         lp_conn->PutOneToFree();
                         lp_socket->free_connection_item(lp_conn);
                     }
@@ -305,9 +303,7 @@ void* CSocket::RecyConnThreadFunc(void* lp_item) {
                 lp_thread->running = true;
             }
             if (!m_recy_connectionList.empty()) {  // 进程非退出，且队列非空
-                auto begin = m_recy_connectionList.begin();  // 目的：for 的每轮循环，begin、end 参照不变
-                auto end = m_recy_connectionList.end();
-                for (std::list<lp_connection_t>::iterator it = begin; it != end;) {
+                for (auto it = m_recy_connectionList.begin(); it != m_recy_connectionList.end();) {
                     cur_time = time(NULL);
                     lp_connection_t lp_conn = *it;
                     if ((lp_socket->m_delay_time + lp_conn->inrevy_time) < cur_time && g_stopEvent == 0) {  // 说明此时满足时间要求
@@ -393,9 +389,7 @@ void* CSocket::SendMsgThreadFunc(void* lp_item) {
                 break;
             }
             if (!lp_socket->m_send_msgList.empty()) {
-                auto begin = lp_socket->m_send_msgList.begin();
-                auto end = lp_socket->m_send_msgList.end();
-                for (auto it = begin; it != end; ) {
+                for (auto it = lp_socket->m_send_msgList.begin(); it != lp_socket->m_send_msgList.end(); ) {
                     // 未发送完整的连接对象，也不会在队列中移除，因此只要未在队列中移除，那么就可以取到消息头、包头
                     char* msg_send = it->get();  // 首先获得容器元素，再获得指向对象 小心使用
                     LPSTRUC_MSG_HEADER lp_msghead_tosend = (LPSTRUC_MSG_HEADER)(msg_send);
@@ -466,7 +460,7 @@ void* CSocket::SendMsgThreadFunc(void* lp_item) {
 
 
 /**
- * @brief 初始化连接池
+ * @brief 初始化连接池 创建足够的连接对象
  * @details 分配连接对象的内存时，6.3 改为每次分配一个对象的空间
  */
 void CSocket::connectpool_init() {
@@ -535,7 +529,7 @@ void CSocket::event_close_listen() {
 }
 
 /**
- * @brief 
+ * @brief 设置相关的
  * @param fd 
  * @param flag 修改类型 ADD MOD DEL
  * @param event_type 事件类型
@@ -573,7 +567,7 @@ int CSocket::epoll_oper_event(int fd, uint32_t flag, uint32_t event_type, int bc
 
 /**
  * @brief 外部是循环调用，因此内部无需 while
- * @param timer 
+ * @param timer epoll_wait 阻塞等待的时间
  * @return int 
  */
 int CSocket::epoll_process_events(int timer) {
@@ -588,7 +582,7 @@ int CSocket::epoll_process_events(int timer) {
         }
     }
     // 超时情况处理
-    if (events_num == 0)  {
+    if (events_num == 0) {
         if (timer != -1) 
             return 0;  // 阻塞到时间了，正常返回
         log_error_core(LOG_ALERT, 0, "epoll_wait wait indefinitely, but no event is returned at [%s]", "CSocekt::ngx_epoll_process_events");

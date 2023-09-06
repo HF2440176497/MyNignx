@@ -90,9 +90,8 @@ void* CSocket::ServerTimerQueueThreadFunc(void* lp_item) {
         while (ptmp_ptr = p_socket->GetOverTime(cur_time)) {  // 直到返回 nullptr
             list_toexam.push_back(ptmp_ptr);
         }
-        ptmp_ptr = nullptr;  // 类似于 ptmp_ptr_toexam = nullptr; 将智能指针彻底移交
+        ptmp_ptr = nullptr;  // 重新置空
         std::shared_ptr<STRUC_MSG_HEADER> ptmp_ptr_toexam = nullptr;
-        // log_error_core(LOG_INFO, 0, "监视线程，此轮检查数目 [%d]", list_toexam.size());  
         for (auto it = list_toexam.begin(); it != list_toexam.end(); ) {
             ptmp_ptr_toexam = *it;
             p_socket->TimeCheckingProc(ptmp_ptr_toexam.get(), cur_time);  // 此时

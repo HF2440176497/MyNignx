@@ -31,16 +31,16 @@
 #define ERROR_LOG_PATH       "logs/error.log"   //定义日志存放的路径和文件名 
 
 // 标题相关
-#define MAX_TITLE_LEN 50
-#define MASTER_PROCESS_TITLE        "master process"
+#define MAX_TITLE_LEN         50
+#define MASTER_PROCESS_TITLE  "master process"
 
-#define PROCESS_MASTER     0  //master进程，管理进程
-#define PROCESS_WORKER     1 
+#define PROCESS_MASTER        0  //master进程，管理进程
+#define PROCESS_WORKER        1 
 
 // 监听端口相关
-#define DEFAULT_PORT 9000
+#define DEFAULT_PORT          9000
 
-#define ADDR_LEN sizeof(struct sockaddr)
+#define ADDR_LEN                    sizeof(struct sockaddr)
 
 // 消息头与包结构相关 结构体在 comm.h 中定义
 #define PKG_HEADER_LEN              sizeof(COMM_PKG_HEADER)
