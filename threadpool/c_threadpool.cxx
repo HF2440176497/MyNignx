@@ -192,7 +192,6 @@ void* CThreadPool::ThreadFunc(void* lp_item) {
             // log_error_core(LOG_INFO, 0, "当前线程 [%d] 运行至 m_cond.wait，阻塞释放锁", tid);
             pthread_cond_wait(&lp_this->m_pthreadCond, &lp_this->m_pthreadMutex);  // 没有消息，则解锁互斥量，并阻塞在此等待唤醒，唤醒时会重新加锁，但只有一个加锁成功。加锁成功的会循环判断判断         
         }
-        // 此时有可能没有消息，先判断退出条件
         if (lp_thread->ifshutdown) {
             lp_thread->running = false;
             errnum = pthread_mutex_unlock(&lp_this->m_pthreadMutex); 

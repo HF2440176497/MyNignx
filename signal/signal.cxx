@@ -48,7 +48,7 @@ static void signal_handler(int signo, siginfo_t *siginfo, void *ucontext) {
             break;
         }
     }
-    action = (char *)"";
+    action = (char *)"";  // 指向字符串常量的指针
     if (process_form == PROCESS_MASTER) {
         switch (signo) {
         case SIGCHLD:
@@ -69,7 +69,7 @@ static void signal_handler(int signo, siginfo_t *siginfo, void *ucontext) {
     if (siginfo && siginfo->si_pid) {
         log_error_core(LOG_INFO, 0, "signal %d (%s) received from %P%s", signo, sig->signame, siginfo->si_pid, action);
     } else {
-        log_error_core(LOG_INFO, 0, "signal %d (%s) received %s", signo, sig->signame, action);  // 没有发送该信号的进程id，所以不显示发送该信号的进程id
+        log_error_core(LOG_INFO, 0, "signal %d (%s) received %s", signo, sig->signame, action);  // 没有发送该信号的进程id，所以不显示发送
     }
 
     //.......其他需要扩展的将来再处理；
@@ -98,10 +98,10 @@ static void process_get_status() {
             if (err == EINTR)  { // 调用被某个信号中断
                 continue;
             }
-            if (err == ECHILD && one)  { // 表示没有子进程
+            if (err == ECHILD && one)  { // 表示没有需要 wait 的子进程
                 return;
             }
-            if (err == ECHILD)  {
+            if (err == ECHILD)  {  // 可能是 pid 设置问题，pid 不是当前的子进程
                 log_error_core(LOG_INFO, err, "waitpid() failed!");
                 return;
             }
@@ -109,7 +109,7 @@ static void process_get_status() {
             return;
         }  
         one = 1;  // 标记waitpid()返回了正常的返回值
-        if (WTERMSIG(status)) {
+        if (WTERMSIG(status)) {  // 表示 child 确实是被信号终止的
             log_error_core(LOG_ALERT, 0, "pid = %P exited on signal %d!", pid, WTERMSIG(status));  // 获取使子进程终止的信号编号
         } else {
             log_error_core(LOG_NOTICE, 0, "pid = %P exited with code %d!", pid, WEXITSTATUS(status));  // WEXITSTATUS()获取子进程传递给exit或者_exit参数的低八位
@@ -121,21 +121,19 @@ static void process_get_status() {
 // 初始化信号的函数，用于注册信号处理程序
 // 返回值：0成功  ，-1失败
 int init_signals() {
-    signal_t        *sig;  //
+    signal_t        *sig;
     struct sigaction sa;
 
     for (sig = signals; sig->signo != 0; sig++) {
         memset(&sa, 0, sizeof(struct sigaction));  // 先填充为 0
 
         if (sig->handler) {
-            sa.sa_flags     = SA_SIGINFO;
+            sa.sa_flags     = SA_SIGINFO;  // 此时的 handler 需要三个参数，handler 能处理更多的信息
             sa.sa_sigaction = sig->handler;
         } else {
             sa.sa_handler = SIG_IGN;
         }  // end if
-
-        sigemptyset(&sa.sa_mask);
-
+        sigemptyset(&sa.sa_mask);  // 阻塞信号集清空
         if (sigaction(sig->signo, &sa, nullptr) == -1) {
             log_error_core(LOG_EMERG, errno, "sigaction(%s) failed", sig->signame);  // 显示到日志文件中去的
             return -1;                                                               // 有失败就直接返回
